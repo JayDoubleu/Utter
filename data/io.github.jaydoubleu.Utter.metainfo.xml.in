@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>@APP_ID@</id>
+  <name>Utter</name>
+  <summary>Dictate into any app</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.jaydoubleu">
+    <name>Jay W</name>
+  </developer>
+  <description>
+    <p>
+      Utter turns speech into text and types it into the focused application.
+      Recognition runs on your device with NVIDIA Parakeet or OpenAI Whisper models.
+      No audio leaves your computer.
+    </p>
+    <ul>
+      <li>Global shortcut with toggle or push-to-talk activation</li>
+      <li>Types the text into any app, or pastes it</li>
+      <li>Spoken punctuation and a personal dictionary</li>
+      <li>Optional cleanup with a local or cloud language model</li>
+      <li>Dictation history</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">@APP_ID@.desktop</launchable>
+  <url type="homepage">https://github.com/JayDoubleu/Utter</url>
+  <url type="bugtracker">https://github.com/JayDoubleu/Utter/issues</url>
+  <url type="vcs-browser">https://github.com/JayDoubleu/Utter</url>
+  <content_rating type="oars-1.1"/>
+  <branding>
+    <color type="primary" scheme_preference="light">#99c1f1</color>
+    <color type="primary" scheme_preference="dark">#1a5fb4</color>
+  </branding>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+  <releases>
+    <release version="@VERSION@" date="2026-09-16">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

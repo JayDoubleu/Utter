@@ -1,0 +1,26 @@
+id: io.github.jaydoubleu.Utter
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: utter
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --socket=pulseaudio
+  - --share=network
+  - --talk-name=org.freedesktop.secrets
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /share/man
+  - '*.la'
+  - '*.a'
+modules:
+  - python3-deps.yaml
+  - name: utter
+    buildsystem: meson
+    sources:
+      - type: dir
+        path: ../..

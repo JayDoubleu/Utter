@@ -1,0 +1,17 @@
+[project]
+name = "utter"
+version = "0.1.0"
+description = "Dictate into any app. GNOME voice dictation with on-device speech recognition."
+requires-python = ">=3.13"
+license = "GPL-3.0-or-later"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

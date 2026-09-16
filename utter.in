@@ -1,0 +1,10 @@
+#!@PYTHON@
+import signal
+import sys
+
+sys.path.insert(1, "@pythondir@")
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+from utter.main import main  # noqa: E402
+
+sys.exit(main(sys.argv))

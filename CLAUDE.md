@@ -1,0 +1,35 @@
+# Utter
+
+GNOME voice dictation app. Python 3.13, GTK 4, libadwaita, GStreamer, sherpa-onnx. Packaged as a Flatpak on the `org.gnome.Platform//50` runtime.
+
+## Layout
+
+- `src/utter/` application package. Pure modules with no GTK imports: `formatting.py`, `models.py`, `enhance.py`, `history.py`, `recognizer.py`. GObject modules: `audio.py`, `sounds.py`, `portal.py`, `shortcuts.py`, `injector.py`, `modelstore.py`, `dictation.py`, `window.py`, `preferences.py`, `main.py`.
+- `data/` desktop file, metainfo, GSettings schema, D-Bus service, icons.
+- `build-aux/flatpak/` manifest and pinned Python wheels.
+- `tests/` pytest for the pure modules.
+
+## Key design points
+
+- `dictation.py` is the state machine: idle, loading, listening, transcribing, enhancing, typing. Worker threads report back with `mainthread.run_on_main`.
+- `portal.py` wraps GDBus portal calls. `request()` subscribes to the Request Response signal before it calls the method.
+- `shortcuts.py` uses `org.freedesktop.portal.GlobalShortcuts`. Activated starts, Deactivated stops in push-to-talk mode.
+- `injector.py` uses `org.freedesktop.portal.RemoteDesktop` with `persist_mode=2` and stores the restore token in GSettings. Typing sends one keysym per character. Paste mode uses the Clipboard portal and Ctrl+V.
+- Audio is captured with `pulsesrc` at 16 kHz mono float32. sherpa-onnx resamples other rates itself.
+- The version lives in `src/utter/config.py`. Meson reads it from there.
+
+## Commands
+
+```bash
+.venv/bin/python -m pytest              # unit tests
+.venv/bin/ruff check src tests          # lint
+meson setup _build && meson test -C _build   # validates desktop, metainfo and schema
+flatpak run org.flatpak.Builder --user --install --force-clean flatpak-build build-aux/flatpak/io.github.jaydoubleu.Utter.yaml
+flatpak run io.github.jaydoubleu.Utter
+```
+
+## Conventions
+
+- British spelling in prose and UI strings. Code identifiers keep upstream spelling.
+- No em-dashes anywhere.
+- Keep GTK-free modules GTK-free so tests run in a plain venv.

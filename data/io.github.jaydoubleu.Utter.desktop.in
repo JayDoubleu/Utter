@@ -1,0 +1,17 @@
+[Desktop Entry]
+Name=Utter
+Comment=Dictate into any app
+Exec=utter
+Icon=@APP_ID@
+Terminal=false
+Type=Application
+Categories=GNOME;GTK;Utility;Accessibility;AudioVideo;Audio;
+Keywords=dictation;speech;voice;transcription;typing;
+StartupNotify=true
+DBusActivatable=true
+X-GNOME-UsesNotifications=true
+Actions=toggle;
+
+[Desktop Action toggle]
+Name=Start or stop dictation
+Exec=utter --toggle

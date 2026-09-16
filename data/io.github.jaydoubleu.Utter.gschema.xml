@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist gettext-domain="utter">
+  <enum id="io.github.jaydoubleu.Utter.ActivationMode">
+    <value nick="toggle" value="0"/>
+    <value nick="push-to-talk" value="1"/>
+  </enum>
+  <enum id="io.github.jaydoubleu.Utter.InjectionMode">
+    <value nick="type" value="0"/>
+    <value nick="paste" value="1"/>
+  </enum>
+  <schema id="io.github.jaydoubleu.Utter" path="/io/github/jaydoubleu/Utter/">
+    <key name="window-width" type="i">
+      <default>440</default>
+    </key>
+    <key name="window-height" type="i">
+      <default>640</default>
+    </key>
+    <key name="model-id" type="s">
+      <default>'parakeet-tdt-0.6b-v3'</default>
+      <summary>Speech model identifier from the catalogue</summary>
+    </key>
+    <key name="language" type="s">
+      <default>'auto'</default>
+      <summary>Spoken language code, or auto</summary>
+    </key>
+    <key name="num-threads" type="i">
+      <range min="1" max="32"/>
+      <default>4</default>
+    </key>
+    <key name="audio-device" type="s">
+      <default>''</default>
+      <summary>PulseAudio source name, or empty for the default input</summary>
+    </key>
+    <key name="activation-mode" enum="io.github.jaydoubleu.Utter.ActivationMode">
+      <default>'toggle'</default>
+    </key>
+    <key name="injection-mode" enum="io.github.jaydoubleu.Utter.InjectionMode">
+      <default>'type'</default>
+    </key>
+    <key name="paste-uses-shift" type="b">
+      <default>false</default>
+      <summary>Paste with Ctrl+Shift+V instead of Ctrl+V</summary>
+    </key>
+    <key name="spoken-punctuation" type="b">
+      <default>true</default>
+    </key>
+    <key name="auto-capitalise" type="b">
+      <default>true</default>
+    </key>
+    <key name="dictionary" type="as">
+      <default>[]</default>
+      <summary>Replacements in the form spoken=replacement</summary>
+    </key>
+    <key name="enhance-enabled" type="b">
+      <default>false</default>
+    </key>
+    <key name="enhance-provider" type="s">
+      <default>'ollama'</default>
+    </key>
+    <key name="enhance-base-url" type="s">
+      <default>'http://localhost:11434/v1'</default>
+    </key>
+    <key name="enhance-model" type="s">
+      <default>''</default>
+    </key>
+    <key name="enhance-prompt" type="s">
+      <default>''</default>
+      <summary>System prompt for cleanup. Empty means the built-in prompt.</summary>
+    </key>
+    <key name="enhance-timeout" type="i">
+      <range min="5" max="300"/>
+      <default>30</default>
+    </key>
+    <key name="play-sounds" type="b">
+      <default>true</default>
+    </key>
+    <key name="run-in-background" type="b">
+      <default>true</default>
+    </key>
+    <key name="autostart" type="b">
+      <default>false</default>
+    </key>
+    <key name="remote-desktop-token" type="s">
+      <default>''</default>
+      <summary>Restore token for the RemoteDesktop portal session</summary>
+    </key>
+    <key name="max-history" type="i">
+      <range min="0" max="10000"/>
+      <default>500</default>
+    </key>
+  </schema>
+</schemalist>
