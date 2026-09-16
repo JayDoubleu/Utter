@@ -5,28 +5,21 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import gi
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
-gi.require_version("Gtk", "4.0")
-gi.require_version("Adw", "1")
-gi.require_version("Gdk", "4.0")
-gi.require_version("Gst", "1.0")
-
-from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
-
-from .audio import AudioCapture  # noqa: E402
-from .config import APP_ID, APP_NAME, HOMEPAGE, ISSUES, VERSION  # noqa: E402
-from .dictation import Dictation  # noqa: E402
-from .history import History  # noqa: E402
-from .injector import TextInjector  # noqa: E402
-from .modelstore import ModelStore  # noqa: E402
-from .portal import RESPONSE_OK, Portal, export_window_handle  # noqa: E402
-from .preferences import PreferencesDialog  # noqa: E402
-from .recognizer import Recognizer  # noqa: E402
-from .settings import get_settings  # noqa: E402
-from .shortcuts import GlobalShortcuts  # noqa: E402
-from .sounds import Sounds  # noqa: E402
-from .window import UtterWindow  # noqa: E402
+from .audio import AudioCapture
+from .config import APP_ID, APP_NAME, HOMEPAGE, ISSUES, VERSION
+from .dictation import Dictation
+from .history import History
+from .injector import TextInjector
+from .modelstore import ModelStore
+from .portal import RESPONSE_OK, Portal, export_window_handle
+from .preferences import PreferencesDialog
+from .recognizer import Recognizer
+from .settings import get_settings
+from .shortcuts import GlobalShortcuts
+from .sounds import Sounds
+from .window import UtterWindow
 
 CSS = """
 .record-button {

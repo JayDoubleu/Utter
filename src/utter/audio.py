@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import threading
 
-import gi
 import numpy as np
+from gi.repository import GLib, GObject, Gst
 
-gi.require_version("Gst", "1.0")
-from gi.repository import GLib, GObject, Gst  # noqa: E402
-
-from .mainthread import run_on_main  # noqa: E402
+from .mainthread import run_on_main
 
 SAMPLE_RATE = 16000
 CAPS = f"audio/x-raw,format=F32LE,rate={SAMPLE_RATE},channels=1,layout=interleaved"
