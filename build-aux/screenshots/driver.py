@@ -30,8 +30,9 @@ def fake_shortcut(self, parent=""):
 GlobalShortcuts.start = fake_shortcut
 utter_main.UtterApplication.request_background = lambda self, *args, **kwargs: None
 # A keyring lookup in the private session waits for a time-out.
-utter_preferences.load_secret = lambda purpose: "demo-key-not-real"
-utter_preferences.store_secret = lambda purpose, value: None
+utter_main.migrate_api_key = lambda selected: True
+utter_preferences.load_api_key = lambda provider_id: "demo-key-not-real"
+utter_preferences.store_api_key = lambda provider_id, value: None
 
 dialogs = []
 

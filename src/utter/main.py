@@ -10,6 +10,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 from .audio import AudioCapture
 from .config import APP_ID, APP_NAME, HOMEPAGE, ISSUES, VERSION
 from .dictation import Dictation
+from .enhance import find_provider, model_for_provider
 from .history import History
 from .injector import TextInjector
 from .modelstore import ModelStore
@@ -97,8 +98,12 @@ class UtterApplication(Adw.Application):
 
         self.settings = get_settings()
         if not self.settings.get_boolean("api-key-migrated"):
-            migrate_api_key(self.settings.get_string("enhance-provider"))
-            self.settings.set_boolean("api-key-migrated", True)
+            if migrate_api_key(self.settings.get_string("enhance-provider")):
+                self.settings.set_boolean("api-key-migrated", True)
+        spec = find_provider(self.settings.get_string("enhance-provider"))
+        model = self.settings.get_string("enhance-model")
+        if model_for_provider(spec, model) != model:
+            self.settings.set_string("enhance-model", model_for_provider(spec, model))
         data_dir = Path(GLib.get_user_data_dir()) / "utter"
         self.portal = Portal()
         self.shortcuts = GlobalShortcuts(self.portal)

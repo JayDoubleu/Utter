@@ -7,7 +7,16 @@ import threading
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from .audio import list_input_devices
-from .enhance import DEFAULT_PROMPT, PROVIDERS, EnhanceError, enhance, find_provider, list_models
+from .enhance import (
+    DEFAULT_PROMPT,
+    PROVIDERS,
+    EnhanceError,
+    enhance,
+    find_provider,
+    list_models,
+    model_for_provider,
+    provider_for_key,
+)
 from .mainthread import run_on_main
 from .models import CATALOGUE, effective_language, find_spec, language_choices
 from .secrets import load_api_key, store_api_key
@@ -291,10 +300,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
         self.api_key = Adw.PasswordEntryRow(title="API key")
         self.api_key.set_text(load_api_key(self.settings.get_string("enhance-provider")))
-        self.api_key.connect(
-            "apply",
-            lambda row: store_api_key(self.settings.get_string("enhance-provider"), row.get_text()),
-        )
+        self.api_key.connect("apply", self._on_api_key_applied)
         self.api_key.set_show_apply_button(True)
         group.add(self.api_key)
 
@@ -302,9 +308,14 @@ class PreferencesDialog(Adw.PreferencesDialog):
             spec = find_provider(self.settings.get_string("enhance-provider"))
             if spec.base_url:
                 self.settings.set_string("enhance-base-url", spec.base_url)
-            if spec.default_model:
-                self.settings.set_string("enhance-model", spec.default_model)
+            model = spec.default_model or model_for_provider(
+                spec, self.settings.get_string("enhance-model")
+            )
+            self.settings.set_string("enhance-model", model)
+            # A new text shows the apply button. Hide it, because this key is stored already.
+            self.api_key.set_show_apply_button(False)
             self.api_key.set_text(load_api_key(spec.id) if spec.needs_key else "")
+            self.api_key.set_show_apply_button(True)
             self.api_key.set_sensitive(spec.needs_key)
 
         self.settings.connect("changed::enhance-provider", on_provider_changed)
@@ -347,6 +358,14 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.settings.set_string(
             "enhance-prompt", "" if text.strip() == DEFAULT_PROMPT.strip() else text
         )
+
+    def _on_api_key_applied(self, row: Adw.PasswordEntryRow) -> None:
+        spec = find_provider(self.settings.get_string("enhance-provider"))
+        key = row.get_text().strip()
+        store_api_key(spec.id, key)
+        owner = find_provider(provider_for_key(key) or spec.id)
+        if spec.id != "custom" and owner.id != spec.id:
+            self.add_toast(Adw.Toast(title=f"This looks like a key for {owner.name}.", timeout=6))
 
     def _on_browse_models(self, button: Gtk.MenuButton, _pspec) -> None:
         if not button.get_active():

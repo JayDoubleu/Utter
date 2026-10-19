@@ -9,6 +9,7 @@ from pathlib import Path
 from gi.repository import GLib
 
 from .config import APP_ID
+from .enhance import find_provider, provider_for_key
 
 try:
     import gi
@@ -93,15 +94,23 @@ def load_api_key(provider_id: str) -> str:
     return load_secret(_api_key_purpose(provider_id))
 
 
-def migrate_api_key(provider_id: str) -> None:
-    """Give the shared key of older versions to the selected provider, then remove it.
+def migrate_api_key(selected: str) -> bool:
+    """Give the shared key of older versions to its provider, then remove it.
 
-    The key of one provider must not go to the host of a different provider, so the
-    caller runs this one time only.
+    The key prefix tells the provider. Without a known prefix, the key goes to the
+    selected provider, if that provider uses a key. The key of one provider must not
+    go to the host of a different provider, so the caller runs this until it returns
+    True and then never again.
     """
     legacy = load_secret("enhance-api-key")
     if not legacy:
-        return
+        return True
+    provider_id = provider_for_key(legacy)
+    if provider_id is None:
+        if not find_provider(selected).needs_key:
+            return False
+        provider_id = selected
     if not load_api_key(provider_id):
         store_api_key(provider_id, legacy)
     store_secret("enhance-api-key", "")
+    return True

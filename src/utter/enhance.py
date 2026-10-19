@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -96,6 +97,32 @@ def find_provider(provider_id: str) -> Provider:
     return PROVIDERS[-1]
 
 
+# The first match wins, so "sk-ant-" and "sk-or-" come before "sk-".
+_KEY_PREFIXES = (
+    ("sk-ant-", "anthropic"),
+    ("sk-or-", "openrouter"),
+    ("gsk_", "groq"),
+    ("csk-", "cerebras"),
+    ("sk-", "openai"),
+)
+
+
+def provider_for_key(api_key: str) -> str | None:
+    """Return the id of the provider that issues keys with this prefix, or None."""
+    for prefix, provider_id in _KEY_PREFIXES:
+        if api_key.startswith(prefix):
+            return provider_id
+    return None
+
+
+def model_for_provider(spec: Provider, model: str) -> str:
+    """Replace an empty model, or the default model of a different provider."""
+    others = {p.default_model for p in PROVIDERS if p.default_model and p.id != spec.id}
+    if not model.strip() or model in others:
+        return spec.default_model
+    return model
+
+
 class EnhanceError(Exception):
     pass
 
@@ -139,6 +166,9 @@ def _request(url: str, api_key: str, payload: dict | None, timeout: int) -> dict
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode())
     except urllib.error.HTTPError as error:
+        if error.code in (401, 403):
+            host = urllib.parse.urlsplit(url).hostname or url
+            raise EnhanceError(f"{host} did not accept the API key.") from error
         body = error.read().decode(errors="replace")[:300]
         raise EnhanceError(f"HTTP {error.code} from {url}: {body}") from error
     except urllib.error.URLError as error:
