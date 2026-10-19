@@ -114,9 +114,9 @@ The cleanup adds its time to each dictation before Utter types the text. In Octo
 | Groq `qwen/qwen3.8-27b` | 0.2 s | 0.3 s | 20 of 30 | The fastest, but in long dictations it types spoken punctuation such as "comma" as a word. |
 | Cerebras `qwen-3.8-27b` | 0.3 to 0.7 s | up to 2.1 s | 21 of 30 | The same punctuation errors, and slow peaks. |
 | Google `gemini-3.5-flash-lite` (default) | 0.7 s | 1.2 s | 30 of 30 | Accurate, and the fastest Gemini model. |
-| Google `gemini-3.1-flash-lite`, effort `none` | 0.9 s | 1.2 s | 30 of 30 | Accurate. |
+| Google `gemini-3.1-flash-lite` | 1.0 s | 1.3 s | 30 of 30 | Accurate, but slower than 3.5 Flash-Lite. |
 | Google `gemini-3.8-flash` | 1.6 s | 2.1 to 2.4 s | 30 of 30 | Accurate, but slow for dictation. |
-| Anthropic `claude-haiku-5-5` (default) | 0.8 to 0.9 s | 1.0 to 1.3 s | 30 of 30 | The most accurate, but about 3 times slower. |
+| Anthropic `claude-haiku-5-5` (default) | 0.8 to 0.9 s | 1.0 to 1.3 s | 30 of 30 | Accurate, but about 3 times slower than Cerebras and Groq. |
 
 "Correct" means that the text has no filler words, the speaker's correction replaces the earlier phrase, and spoken punctuation becomes symbols. The times include the network. They change with your connection and with the load on the provider.
 

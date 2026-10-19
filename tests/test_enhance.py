@@ -113,6 +113,9 @@ def test_model_for_provider_replaces_a_model_of_a_different_provider():
     assert model_for_provider(openrouter, "claude-haiku-5-5") == ""
     assert model_for_provider(find_provider("ollama"), "llama3") == "llama3"
     assert model_for_provider(find_provider("anthropic"), "gpt-oss-120b") == "claude-haiku-5-5"
+    gemini = find_provider("gemini")
+    assert model_for_provider(gemini, "openai/gpt-oss-120b") == "gemini-3.5-flash-lite"
+    assert model_for_provider(gemini, "gemini-3.8-flash") == "gemini-3.8-flash"
 
 
 def test_list_models_sorted(server):
