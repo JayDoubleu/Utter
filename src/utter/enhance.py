@@ -230,6 +230,11 @@ def enhance(
     return clean_reply(reply, text)
 
 
+# Groq and others list speech, voice, embedding and safety classifier models with the chat
+# models. These cannot clean up a transcript.
+_NOT_CHAT = re.compile(r"whisper|orpheus|tts|embed|guard", re.IGNORECASE)
+
+
 def list_models(
     base_url: str, api_key: str = "", timeout: int = 15, api: str = "openai"
 ) -> list[str]:
@@ -245,7 +250,7 @@ def list_models(
     if not isinstance(data, list):
         raise EnhanceError("The /models reply has no data list.")
     ids = [item.get("id") for item in data if isinstance(item, dict) and item.get("id")]
-    return sorted(ids)
+    return sorted(i for i in ids if not _NOT_CHAT.search(i))
 
 
 # ---- Anthropic ----------------------------------------------------------------------------

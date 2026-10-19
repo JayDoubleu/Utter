@@ -40,6 +40,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.app = app
         self.settings: Gio.Settings = app.settings
         self.store = app.store
+        self._toast: Adw.Toast | None = None
         self.set_search_enabled(False)
         self.add(self._general_page())
         self.add(self._voice_page())
@@ -359,13 +360,20 @@ class PreferencesDialog(Adw.PreferencesDialog):
             "enhance-prompt", "" if text.strip() == DEFAULT_PROMPT.strip() else text
         )
 
+    def _show_toast(self, title: str, timeout: int) -> None:
+        """Replace the current toast. Adwaita queues toasts, so a result can wait for seconds."""
+        if self._toast is not None:
+            self._toast.dismiss()
+        self._toast = Adw.Toast(title=title, timeout=timeout)
+        self.add_toast(self._toast)
+
     def _on_api_key_applied(self, row: Adw.PasswordEntryRow) -> None:
         spec = find_provider(self.settings.get_string("enhance-provider"))
         key = row.get_text().strip()
         store_api_key(spec.id, key)
         owner = find_provider(provider_for_key(key) or spec.id)
         if spec.id != "custom" and owner.id != spec.id:
-            self.add_toast(Adw.Toast(title=f"This looks like a key for {owner.name}.", timeout=6))
+            self._show_toast(f"This looks like a key for {owner.name}.", 6)
 
     def _on_browse_models(self, button: Gtk.MenuButton, _pspec) -> None:
         if not button.get_active():
@@ -440,11 +448,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
                     options=spec.request_options(model),
                 )
             except EnhanceError as error:
-                run_on_main(self.add_toast, Adw.Toast(title=f"Failed: {error}", timeout=6))
+                run_on_main(self._show_toast, f"Failed: {error}", 6)
                 return
-            run_on_main(self.add_toast, Adw.Toast(title=f"Result: {result}", timeout=8))
+            run_on_main(self._show_toast, f"Result: {result}", 8)
 
-        self.add_toast(Adw.Toast(title="Testing", timeout=2))
+        self._show_toast("Testing", 2)
         threading.Thread(target=worker, daemon=True).start()
 
     # ---- Text ------------------------------------------------------------------------------

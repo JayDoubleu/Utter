@@ -40,7 +40,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        body = json.dumps({"data": [{"id": "b-model"}, {"id": "a-model"}]}).encode()
+        models = ["b-model", "a-model", "whisper-large-v3", "meta-llama/llama-prompt-guard-2-22m"]
+        body = json.dumps({"data": [{"id": m} for m in models]}).encode()
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
