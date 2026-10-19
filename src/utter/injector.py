@@ -104,7 +104,7 @@ class TextInjector(GObject.Object):
         self._subscriptions = [
             self.portal.watch_session_closed(self.session, self._on_closed),
             self.portal.subscribe(
-                CLIPBOARD, "SelectionTransfer", self._on_selection_transfer, arg0=self.session
+                CLIPBOARD, "SelectionTransfer", self._on_selection_transfer, session=self.session
             ),
         ]
 

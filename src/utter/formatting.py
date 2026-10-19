@@ -1,4 +1,4 @@
-"""Pure text formatting for transcripts: spoken punctuation, tidy up, dictionary."""
+"""Pure text formatting: spoken punctuation, tidy up, dictionary, shortcut labels."""
 
 from __future__ import annotations
 
@@ -118,3 +118,49 @@ def format_transcript(
         text = apply_spoken_punctuation(text)
     text = apply_dictionary(text, dictionary)
     return tidy(text, auto_capitalise=auto_capitalise)
+
+
+# ---- global shortcut labels -------------------------------------------------------------
+
+MODIFIER_LABELS = {
+    "control": "Ctrl",
+    "primary": "Ctrl",
+    "ctrl": "Ctrl",
+    "shift": "Shift",
+    "alt": "Alt",
+    "super": "Super",
+    "meta": "Meta",
+    "hyper": "Hyper",
+}
+
+# A GTK accelerator such as <Control><Alt>space inside a longer sentence.
+_ACCELERATOR = re.compile(r"(?:<[A-Za-z0-9]+>)+[^\s<>]+")
+_LEADING_VERB = re.compile(r"^(?:Press|Hold)\s+", re.IGNORECASE)
+
+
+def describe_trigger(description: str) -> str:
+    """Turn a portal trigger_description into a short label such as "Ctrl+Alt+Space".
+
+    GNOME answers with "Press <Control><Alt>space". The verb goes because the UI adds
+    its own, and each accelerator becomes a readable label. Other desktops answer
+    with a plain label, which comes back unchanged.
+    """
+    text = _LEADING_VERB.sub("", description.strip())
+    return _ACCELERATOR.sub(lambda match: _accelerator_label(match.group(0)), text)
+
+
+def _accelerator_label(accelerator: str) -> str:
+    parts: list[str] = []
+    rest = accelerator
+    while rest.startswith("<"):
+        end = rest.index(">")
+        name = rest[1:end]
+        parts.append(MODIFIER_LABELS.get(name.lower(), name.capitalize()))
+        rest = rest[end + 1 :]
+    parts.append(_key_label(rest))
+    return "+".join(parts)
+
+
+def _key_label(key: str) -> str:
+    key = key.replace("_", " ")
+    return key[:1].upper() + key[1:]

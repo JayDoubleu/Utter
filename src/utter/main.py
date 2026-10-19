@@ -135,6 +135,7 @@ class UtterApplication(Adw.Application):
 
         self.shortcuts.connect("activated", self._on_shortcut_activated)
         self.shortcuts.connect("deactivated", self._on_shortcut_deactivated)
+        self.shortcuts.connect("configure-failed", self._on_configure_failed)
         self.dictation.connect("error", self._on_error)
         self.dictation.connect("transcribed", self._on_transcribed)
         self.settings.connect("changed::run-in-background", lambda *_: self._sync_hold())
@@ -226,6 +227,43 @@ class UtterApplication(Adw.Application):
             self.shortcuts.configure(handle)
 
         export_window_handle(self.window, with_handle)
+
+    def _on_configure_failed(self, _shortcuts, message: str) -> None:
+        """The portal has no ConfigureShortcuts. Send the user to Settings instead."""
+        self.activate()
+        dialog = Adw.AlertDialog(
+            heading="Change the shortcut in Settings",
+            body=f"{message} Open Settings › Apps › {APP_NAME} › Global Shortcuts "
+            "to change the binding.",
+        )
+        dialog.add_response("close", "Close")
+        dialog.add_response("settings", "Open Settings")
+        dialog.set_response_appearance("settings", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("settings")
+
+        def on_response(_dialog, response: str) -> None:
+            if response == "settings":
+                self.open_app_settings()
+
+        dialog.connect("response", on_response)
+        dialog.present(self.window)
+
+    def open_app_settings(self) -> None:
+        """Ask GNOME Settings for this app's page over D-Bus. Silent on other desktops."""
+        desktop_id = GLib.Variant("s", f"{APP_ID}.desktop")
+        panel = GLib.Variant("(sav)", ("applications", [desktop_id]))
+        self.portal.bus.call(
+            "org.gnome.Settings",
+            "/org/gnome/Settings",
+            "org.gtk.Actions",
+            "Activate",
+            GLib.Variant("(sava{sv})", ("launch-panel", [panel], {})),
+            None,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            None,
+            None,
+        )
 
     def show_about(self) -> None:
         self.activate()

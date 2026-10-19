@@ -12,8 +12,8 @@ GNOME voice dictation app. Python 3.13, GTK 4, libadwaita, GStreamer, sherpa-onn
 ## Key design points
 
 - `dictation.py` is the state machine: idle, loading, listening, transcribing, enhancing, typing. Worker threads report back with `mainthread.run_on_main`.
-- `portal.py` wraps GDBus portal calls. `request()` subscribes to the Request Response signal before it calls the method.
-- `shortcuts.py` uses `org.freedesktop.portal.GlobalShortcuts`. Activated starts, Deactivated stops in push-to-talk mode.
+- `portal.py` wraps GDBus portal calls. `request()` subscribes to the Request Response signal before it calls the method. `subscribe()` filters session signals with `MATCH_ARG0_PATH` because the session handle is an object path, and a plain arg0 match never fires.
+- `shortcuts.py` uses `org.freedesktop.portal.GlobalShortcuts`. Activated starts, Deactivated stops in push-to-talk mode. `ConfigureShortcuts` needs interface version 2. GNOME 50 answers version 1, so `main.py` shows a dialog and opens Settings › Apps › Utter over `org.gnome.Settings` instead (`--talk-name` in the manifest).
 - `injector.py` uses `org.freedesktop.portal.RemoteDesktop` with `persist_mode=2` and stores the restore token in GSettings. Typing sends one keysym per character. Paste mode uses the Clipboard portal and Ctrl+V.
 - Audio is captured with `pulsesrc` at 16 kHz mono float32. sherpa-onnx resamples other rates itself.
 - The version lives in `src/utter/config.py`. Meson reads it from there.

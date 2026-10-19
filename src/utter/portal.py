@@ -31,9 +31,10 @@ class Portal:
     def request_path(self, token: str) -> str:
         return f"{PORTAL_PATH}/request/{self.sender}/{token}"
 
-    def has_interface(self, interface: str) -> bool:
+    def interface_version(self, interface: str) -> int:
+        """The version property of a portal interface. 0 when the interface is absent."""
         try:
-            self.bus.call_sync(
+            result = self.bus.call_sync(
                 PORTAL_BUS,
                 PORTAL_PATH,
                 "org.freedesktop.DBus.Properties",
@@ -44,9 +45,13 @@ class Portal:
                 2000,
                 None,
             )
-            return True
         except GLib.Error:
-            return False
+            return 0
+        (value,) = result.unpack()
+        return int(value)
+
+    def has_interface(self, interface: str) -> bool:
+        return self.interface_version(interface) > 0
 
     def request(
         self,
@@ -136,8 +141,18 @@ class Portal:
         interface: str,
         signal: str,
         callback: Callable[[tuple], None],
-        arg0: str | None = None,
+        session: str | None = None,
     ) -> int:
+        """Listen for a portal signal, limited to one session when given.
+
+        Session signals carry the session handle as an object path in the first
+        argument. A plain arg0 match only compares string arguments and never fires,
+        so the filter uses MATCH_ARG0_PATH.
+        """
+        flags = Gio.DBusSignalFlags.NONE
+        if session is not None:
+            flags = Gio.DBusSignalFlags.MATCH_ARG0_PATH
+
         def on_signal(_bus, _sender, _path, _iface, _signal, params) -> None:
             callback(params.unpack())
 
@@ -146,8 +161,8 @@ class Portal:
             interface,
             signal,
             PORTAL_PATH,
-            arg0,
-            Gio.DBusSignalFlags.NONE,
+            session,
+            flags,
             on_signal,
         )
 

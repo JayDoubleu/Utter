@@ -1,4 +1,10 @@
-from utter.formatting import apply_dictionary, apply_spoken_punctuation, format_transcript, tidy
+from utter.formatting import (
+    apply_dictionary,
+    apply_spoken_punctuation,
+    describe_trigger,
+    format_transcript,
+    tidy,
+)
 
 
 def test_spoken_punctuation_basic():
@@ -46,3 +52,20 @@ def test_full_pipeline():
         dictionary=["um=", "invoice=Invoice #42"],
     )
     assert out == "Send the Invoice #42, please\n\nThanks."
+
+
+def test_describe_trigger_gnome_form():
+    assert describe_trigger("Press <Control><Alt>space") == "Ctrl+Alt+Space"
+
+
+def test_describe_trigger_two_accelerators():
+    text = "Press <Super>d or <Shift><Control>Page_Up"
+    assert describe_trigger(text) == "Super+D or Shift+Ctrl+Page Up"
+
+
+def test_describe_trigger_plain_label_unchanged():
+    assert describe_trigger("Ctrl+Alt+Space") == "Ctrl+Alt+Space"
+
+
+def test_describe_trigger_empty():
+    assert describe_trigger("") == ""

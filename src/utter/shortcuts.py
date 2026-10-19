@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from gi.repository import GLib, GObject
 
+from .formatting import describe_trigger
 from .portal import RESPONSE_OK, Portal
 
 IFACE = "org.freedesktop.portal.GlobalShortcuts"
 SHORTCUT_ID = "toggle"
 DEFAULT_TRIGGER = "CTRL+ALT+space"
+# ConfigureShortcuts arrived in version 2 of the interface. GNOME 50 still answers version 1.
+CONFIGURE_VERSION = 2
 
 
 class GlobalShortcuts(GObject.Object):
@@ -18,6 +21,7 @@ class GlobalShortcuts(GObject.Object):
         "activated": (GObject.SignalFlags.RUN_FIRST, None, ()),
         "deactivated": (GObject.SignalFlags.RUN_FIRST, None, ()),
         "changed": (GObject.SignalFlags.RUN_FIRST, None, ()),
+        "configure-failed": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
     }
 
     def __init__(self, portal: Portal) -> None:
@@ -25,6 +29,7 @@ class GlobalShortcuts(GObject.Object):
         self.portal = portal
         self.session: str | None = None
         self.state = "idle"
+        self.version = 0
         self.trigger = ""
         self.message = ""
         self._subscriptions: list[int] = []
@@ -33,10 +38,16 @@ class GlobalShortcuts(GObject.Object):
     def is_ready(self) -> bool:
         return self.state == "ready"
 
+    @property
+    def can_configure(self) -> bool:
+        """True when the desktop offers its own dialog to change the binding."""
+        return self.session is not None and self.version >= CONFIGURE_VERSION
+
     def start(self, parent: str = "") -> None:
         if self.session is not None or self.state == "connecting":
             return
-        if not self.portal.has_interface(IFACE):
+        self.version = self.portal.interface_version(IFACE)
+        if self.version == 0:
             self._set_state("unavailable", "The GlobalShortcuts portal is not available.")
             return
         self._set_state("connecting")
@@ -62,10 +73,10 @@ class GlobalShortcuts(GObject.Object):
             return
         self.session = results["session_handle"]
         self._subscriptions = [
-            self.portal.subscribe(IFACE, "Activated", self._on_activated, arg0=self.session),
-            self.portal.subscribe(IFACE, "Deactivated", self._on_deactivated, arg0=self.session),
+            self.portal.subscribe(IFACE, "Activated", self._on_activated, session=self.session),
+            self.portal.subscribe(IFACE, "Deactivated", self._on_deactivated, session=self.session),
             self.portal.subscribe(
-                IFACE, "ShortcutsChanged", self._on_shortcuts_changed, arg0=self.session
+                IFACE, "ShortcutsChanged", self._on_shortcuts_changed, session=self.session
             ),
             self.portal.watch_session_closed(self.session, self._on_closed),
         ]
@@ -98,7 +109,7 @@ class GlobalShortcuts(GObject.Object):
     def _read_shortcuts(self, shortcuts) -> None:
         for shortcut_id, props in shortcuts:
             if shortcut_id == SHORTCUT_ID:
-                self.trigger = str(props.get("trigger_description", "") or "")
+                self.trigger = describe_trigger(str(props.get("trigger_description", "") or ""))
 
     def refresh(self) -> None:
         if self.session is None:
@@ -117,12 +128,26 @@ class GlobalShortcuts(GObject.Object):
         self.portal.request(IFACE, "ListShortcuts", params, on_list)
 
     def configure(self, parent: str = "") -> None:
-        """Open the desktop's dialog to change the binding."""
+        """Open the desktop's dialog to change the binding.
+
+        Emits configure-failed when the desktop has no such dialog or refuses the call.
+        """
         if self.session is None:
             self.start(parent)
             return
+        if not self.can_configure:
+            self.emit("configure-failed", "This desktop has no shortcut dialog for apps.")
+            return
+
+        def on_done(_result, error: str | None) -> None:
+            if error is not None:
+                self.emit("configure-failed", error)
+
         self.portal.call(
-            IFACE, "ConfigureShortcuts", GLib.Variant("(osa{sv})", (self.session, parent, {}))
+            IFACE,
+            "ConfigureShortcuts",
+            GLib.Variant("(osa{sv})", (self.session, parent, {})),
+            on_done,
         )
 
     def _on_activated(self, params: tuple) -> None:
