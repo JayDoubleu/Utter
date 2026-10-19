@@ -13,6 +13,7 @@ from .dictation import Dictation
 from .history import History
 from .injector import TextInjector
 from .modelstore import ModelStore
+from .overlay import OverlayFeed
 from .portal import RESPONSE_OK, Portal, export_window_handle
 from .preferences import PreferencesDialog
 from .recognizer import Recognizer
@@ -112,6 +113,8 @@ class UtterApplication(Adw.Application):
             self.history,
             self.sounds,
         )
+        connection = self.get_dbus_connection()
+        self.overlay_feed = OverlayFeed(connection, self.dictation) if connection else None
 
         for name, callback in (
             ("toggle", lambda *_: self.dictation.toggle()),
@@ -167,6 +170,8 @@ class UtterApplication(Adw.Application):
     def do_shutdown(self) -> None:
         if self.dictation.state == "listening":
             self.audio.stop()
+        if self.overlay_feed is not None:
+            self.overlay_feed.close()
         self.history.close()
         Adw.Application.do_shutdown(self)
 

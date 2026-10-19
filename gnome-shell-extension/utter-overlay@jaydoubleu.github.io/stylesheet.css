@@ -1,0 +1,39 @@
+/* The FluidVoice "medium" panel in the smoked glass style. GNOME Shell has no blur behind
+   chrome, so the glass is a dark colour. St draws the box-shadow of a gradient background
+   without the rounded corners, so the background is one colour. */
+.utter-overlay {
+  width: 340px;
+  padding: 12px 18px;
+  spacing: 6px;
+  border-radius: 18px;
+  background-color: rgba(11, 15, 23, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 7px 14px rgba(0, 0, 0, 0.34);
+}
+
+/* About three lines of 13 px text. Older lines scroll out at the top. */
+.utter-overlay-scroll {
+  max-height: 54px;
+}
+
+.utter-overlay-text {
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.utter-overlay-row {
+  spacing: 12px;
+}
+
+.utter-overlay-mode {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.utter-overlay-loading {
+  color: rgba(255, 165, 0, 0.85);
+  font-size: 10px;
+  font-weight: 500;
+}
