@@ -17,13 +17,32 @@
     <ul>
       <li>Global shortcut with toggle or push-to-talk activation</li>
       <li>Types the text into any app, or pastes it</li>
-      <li>Live text while you speak with a streaming model</li>
+      <li>Live text while you speak with Parakeet and Nemotron models</li>
+      <li>An optional GNOME Shell extension shows the live text in a panel above all windows</li>
       <li>Spoken punctuation and a personal dictionary</li>
       <li>Optional cleanup with a local or cloud language model</li>
       <li>Dictation history</li>
     </ul>
   </description>
   <launchable type="desktop-id">@APP_ID@.desktop</launchable>
+  <screenshots>
+    <screenshot type="default">
+      <caption>The main window with the recent dictations</caption>
+      <image>https://raw.githubusercontent.com/JayDoubleu/Utter/main/docs/screenshots/main-window.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The overlay panel shows the live text while you speak</caption>
+      <image>https://raw.githubusercontent.com/JayDoubleu/Utter/main/docs/screenshots/overlay-desktop.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Choose a speech model that runs on your computer</caption>
+      <image>https://raw.githubusercontent.com/JayDoubleu/Utter/main/docs/screenshots/preferences-voice.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Optional cleanup with a local or cloud language model</caption>
+      <image>https://raw.githubusercontent.com/JayDoubleu/Utter/main/docs/screenshots/preferences-cleanup.png</image>
+    </screenshot>
+  </screenshots>
   <url type="homepage">https://github.com/JayDoubleu/Utter</url>
   <url type="bugtracker">https://github.com/JayDoubleu/Utter/issues</url>
   <url type="vcs-browser">https://github.com/JayDoubleu/Utter</url>
