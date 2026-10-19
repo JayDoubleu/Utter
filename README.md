@@ -16,7 +16,7 @@ Utter is a GNOME app in a Flatpak. It is an alternative to macOS dictation apps 
 - **Global shortcut** through the XDG GlobalShortcuts portal, with toggle or push-to-talk.
 - **Types into the focused app** through the XDG RemoteDesktop portal, or pastes through the Clipboard portal. This works on Wayland and X11 from inside the sandbox.
 - **Spoken punctuation** ("comma", "full stop", "new line"), sentence capitalisation and a personal dictionary.
-- **Optional cleanup with a chat model.** Use Anthropic (Claude Haiku 5.5 by default) or an OpenAI-compatible provider such as Ollama, LM Studio, OpenAI, Groq or OpenRouter. The model removes filler words and corrects punctuation.
+- **Optional cleanup with a chat model.** Use Anthropic (Claude Haiku 5.5 by default) or an OpenAI-compatible provider such as Ollama, LM Studio, OpenAI, Cerebras, Groq or OpenRouter. Cerebras and Groq use `gpt-oss-120b` by default and clean a dictation in about 0.3 s. Each provider keeps its own API key. The model removes filler words and corrects punctuation.
 - **Dictation history** with copy and delete.
 - **Runs in the background** and can start at login.
 

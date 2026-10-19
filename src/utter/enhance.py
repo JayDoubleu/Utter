@@ -39,6 +39,20 @@ class Provider:
     needs_key: bool
     api: str = "openai"  # "openai" for /chat/completions, "anthropic" for the Messages API
     default_model: str = ""
+    fast: bool = False  # Hosted on fast inference hardware. Reasoning is kept short.
+
+    def request_options(self, model: str) -> dict[str, str]:
+        """Return extra /chat/completions fields that keep the reply fast."""
+        if not self.fast:
+            return {}
+        name = model.lower()
+        # gpt-oss always reasons. Low effort costs about 30 tokens.
+        if "gpt-oss" in name:
+            return {"reasoning_effort": "low"}
+        # Qwen 3 reasons by default. Without "none", Cerebras takes 2 to 12 s.
+        if "qwen3" in name or "qwen-3" in name:
+            return {"reasoning_effort": "none"}
+        return {}
 
 
 PROVIDERS: tuple[Provider, ...] = (
@@ -53,7 +67,23 @@ PROVIDERS: tuple[Provider, ...] = (
         default_model="claude-haiku-5-5",
     ),
     Provider("openai", "OpenAI", "https://api.openai.com/v1", True),
-    Provider("groq", "Groq", "https://api.groq.com/openai/v1", True),
+    # gpt-oss-120b on Cerebras and Groq cleans a dictation in about 0.3 s (tested October 2026).
+    Provider(
+        "cerebras",
+        "Cerebras",
+        "https://api.cerebras.ai/v1",
+        True,
+        default_model="gpt-oss-120b",
+        fast=True,
+    ),
+    Provider(
+        "groq",
+        "Groq",
+        "https://api.groq.com/openai/v1",
+        True,
+        default_model="openai/gpt-oss-120b",
+        fast=True,
+    ),
     Provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", True),
     Provider("custom", "OpenAI compatible", "", True),
 )
@@ -81,9 +111,13 @@ def strip_thinking(text: str) -> str:
     return text.strip()
 
 
+# gpt-oss writes "3\u202fpm". The injector types plain spaces only.
+_ODD_SPACES = str.maketrans({"\u00a0": " ", "\u202f": " ", "\u2007": " "})
+
+
 def clean_reply(reply: str, original: str) -> str:
     """Strip reasoning and wrapping quotes. Fall back to the original when empty."""
-    text = strip_thinking(reply)
+    text = strip_thinking(reply).translate(_ODD_SPACES)
     if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'“”":
         inner = text[1:-1].strip()
         if inner and not (original.startswith(text[0]) and original.endswith(text[-1])):
@@ -129,8 +163,12 @@ def enhance(
     prompt: str = "",
     timeout: int = 30,
     api: str = "openai",
+    options: dict[str, str] | None = None,
 ) -> str:
-    """Return the cleaned text. Raises EnhanceError on failure."""
+    """Return the cleaned text. Raises EnhanceError on failure.
+
+    The options go into the /chat/completions request as extra fields.
+    """
     if not text.strip():
         return text
     if not model.strip():
@@ -150,6 +188,7 @@ def enhance(
             {"role": "system", "content": system},
             {"role": "user", "content": user_content(text)},
         ],
+        **(options or {}),
     }
     body = _request(url, api_key, payload, timeout)
     try:

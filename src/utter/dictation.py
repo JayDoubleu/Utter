@@ -18,7 +18,7 @@ from .mainthread import run_on_main
 from .models import DEFAULT_MODEL_ID, ModelSpec, find_spec
 from .modelstore import ModelStore
 from .recognizer import Recognizer, RecognizerError
-from .secrets import load_secret
+from .secrets import load_api_key
 from .sounds import Sounds
 
 MIN_DURATION = 0.35
@@ -247,15 +247,18 @@ class Dictation(GObject.Object):
             return
         if self.settings.get_boolean("enhance-enabled"):
             run_on_main(self._set_state, "enhancing")
+            spec = find_provider(self.settings.get_string("enhance-provider"))
+            model = self.settings.get_string("enhance-model")
             try:
                 text = enhance(
                     text,
                     base_url=self.settings.get_string("enhance-base-url"),
-                    model=self.settings.get_string("enhance-model"),
-                    api_key=load_secret("enhance-api-key"),
+                    model=model,
+                    api_key=load_api_key(spec.id),
                     prompt=self.settings.get_string("enhance-prompt"),
                     timeout=self.settings.get_int("enhance-timeout"),
-                    api=find_provider(self.settings.get_string("enhance-provider")).api,
+                    api=spec.api,
+                    options=spec.request_options(model),
                 )
             except EnhanceError as error:
                 run_on_main(self.emit, "notice", f"Enhancement skipped: {error}")

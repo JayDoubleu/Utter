@@ -76,3 +76,16 @@ def load_secret(purpose: str) -> str:
         except GLib.Error:
             pass
     return _read_fallback().get(purpose, "")
+
+
+def _api_key_purpose(provider_id: str) -> str:
+    return f"enhance-api-key-{provider_id}"
+
+
+def store_api_key(provider_id: str, value: str) -> None:
+    store_secret(_api_key_purpose(provider_id), value)
+
+
+def load_api_key(provider_id: str) -> str:
+    """Return the key of the cleanup provider. Older versions kept one key for all providers."""
+    return load_secret(_api_key_purpose(provider_id)) or load_secret("enhance-api-key")

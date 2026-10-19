@@ -9,6 +9,7 @@ from utter.enhance import (
     EnhanceError,
     clean_reply,
     enhance,
+    find_provider,
     list_models,
     strip_thinking,
 )
@@ -57,6 +58,20 @@ def test_enhance_round_trip(server):
     assert Handler.last_request["_auth"] == "Bearer k"
 
 
+def test_enhance_sends_options(server):
+    enhance("raw text", base_url=server, model="m", options={"reasoning_effort": "low"})
+    assert Handler.last_request["reasoning_effort"] == "low"
+
+
+def test_fast_providers_keep_reasoning_short():
+    for provider_id in ("cerebras", "groq"):
+        spec = find_provider(provider_id)
+        assert spec.request_options(spec.default_model) == {"reasoning_effort": "low"}
+        assert spec.request_options("qwen-3.8-27b") == {"reasoning_effort": "none"}
+        assert spec.request_options("llama-3.3-70b") == {}
+    assert find_provider("ollama").request_options("gpt-oss:20b") == {}
+
+
 def test_list_models_sorted(server):
     assert list_models(server) == ["a-model", "b-model"]
 
@@ -77,6 +92,7 @@ def test_strip_thinking_and_clean_reply():
     assert clean_reply("", "orig") == "orig"
     assert clean_reply("```\ncode\n```", "orig") == "code"
     assert clean_reply('"quoted"', '"quoted"') == '"quoted"'
+    assert clean_reply("At 3\u202fpm", "orig") == "At 3 pm"
 
 
 class AnthropicHandler(BaseHTTPRequestHandler):

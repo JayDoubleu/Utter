@@ -10,7 +10,7 @@ from .audio import list_input_devices
 from .enhance import DEFAULT_PROMPT, PROVIDERS, EnhanceError, enhance, find_provider, list_models
 from .mainthread import run_on_main
 from .models import CATALOGUE, effective_language, find_spec, language_choices
-from .secrets import load_secret, store_secret
+from .secrets import load_api_key, store_api_key
 
 ACTIVATION_MODES = (
     ("toggle", "Press to start, press again to stop"),
@@ -290,8 +290,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
         group.add(self.model_entry)
 
         self.api_key = Adw.PasswordEntryRow(title="API key")
-        self.api_key.set_text(load_secret("enhance-api-key"))
-        self.api_key.connect("apply", lambda row: store_secret("enhance-api-key", row.get_text()))
+        self.api_key.set_text(load_api_key(self.settings.get_string("enhance-provider")))
+        self.api_key.connect(
+            "apply",
+            lambda row: store_api_key(self.settings.get_string("enhance-provider"), row.get_text()),
+        )
         self.api_key.set_show_apply_button(True)
         group.add(self.api_key)
 
@@ -301,6 +304,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
                 self.settings.set_string("enhance-base-url", spec.base_url)
             if spec.default_model:
                 self.settings.set_string("enhance-model", spec.default_model)
+            self.api_key.set_text(load_api_key(spec.id) if spec.needs_key else "")
             self.api_key.set_sensitive(spec.needs_key)
 
         self.settings.connect("changed::enhance-provider", on_provider_changed)
@@ -403,15 +407,18 @@ class PreferencesDialog(Adw.PreferencesDialog):
         settings = self.settings
 
         def worker() -> None:
+            spec = find_provider(settings.get_string("enhance-provider"))
+            model = settings.get_string("enhance-model")
             try:
                 result = enhance(
                     sample,
                     base_url=settings.get_string("enhance-base-url"),
-                    model=settings.get_string("enhance-model"),
-                    api_key=load_secret("enhance-api-key"),
+                    model=model,
+                    api_key=load_api_key(spec.id),
                     prompt=settings.get_string("enhance-prompt"),
                     timeout=settings.get_int("enhance-timeout"),
-                    api=find_provider(settings.get_string("enhance-provider")).api,
+                    api=spec.api,
+                    options=spec.request_options(model),
                 )
             except EnhanceError as error:
                 run_on_main(self.add_toast, Adw.Toast(title=f"Failed: {error}", timeout=6))
