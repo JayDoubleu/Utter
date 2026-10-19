@@ -40,7 +40,16 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        models = ["b-model", "a-model", "whisper-large-v3", "meta-llama/llama-prompt-guard-2-22m"]
+        models = [
+            "b-model",
+            "models/a-model",
+            "whisper-large-v3",
+            "meta-llama/llama-prompt-guard-2-22m",
+            "models/gemini-3.1-flash-image",
+            "models/gemini-3.8-flash-tts",
+            "models/gemini-embedding-2",
+            "models/veo-3.1-generate-preview",
+        ]
         body = json.dumps({"data": [{"id": m} for m in models]}).encode()
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
@@ -71,12 +80,15 @@ def test_enhance_sends_options(server):
     assert Handler.last_request["reasoning_effort"] == "low"
 
 
-def test_fast_providers_keep_reasoning_short():
+def test_providers_keep_reasoning_short():
     for provider_id in ("cerebras", "groq"):
         spec = find_provider(provider_id)
         assert spec.request_options(spec.default_model) == {"reasoning_effort": "low"}
         assert spec.request_options("qwen-3.8-27b") == {"reasoning_effort": "none"}
         assert spec.request_options("llama-3.3-70b") == {}
+    gemini = find_provider("gemini")
+    assert gemini.request_options(gemini.default_model) == {"reasoning_effort": "low"}
+    assert gemini.request_options("gemma-4-31b-it") == {}
     assert find_provider("ollama").request_options("gpt-oss:20b") == {}
 
 
@@ -86,6 +98,7 @@ def test_provider_for_key():
     assert provider_for_key("sk-proj-x") == "openai"
     assert provider_for_key("gsk_x") == "groq"
     assert provider_for_key("csk-x") == "cerebras"
+    assert provider_for_key("AIzaSyX") == "gemini"
     assert provider_for_key("abc") is None
 
 

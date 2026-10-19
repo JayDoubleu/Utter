@@ -16,7 +16,7 @@ Utter is a GNOME app in a Flatpak. It is an alternative to macOS dictation apps 
 - **Global shortcut** through the XDG GlobalShortcuts portal, with toggle or push-to-talk.
 - **Types into the focused app** through the XDG RemoteDesktop portal, or pastes through the Clipboard portal. This works on Wayland and X11 from inside the sandbox.
 - **Spoken punctuation** ("comma", "full stop", "new line"), sentence capitalisation and a personal dictionary.
-- **Optional cleanup with a chat model.** Use Anthropic (Claude Haiku 5.5 by default) or an OpenAI-compatible provider such as Ollama, LM Studio, OpenAI, Cerebras, Groq or OpenRouter. Cerebras and Groq use `gpt-oss-120b` by default and clean a dictation in about 0.3 s. Each provider keeps its own API key. The model removes filler words and corrects punctuation.
+- **Optional cleanup with a chat model.** Use Anthropic (Claude Haiku 5.5 by default) or an OpenAI-compatible provider such as Ollama, LM Studio, OpenAI, Cerebras, Groq, Google Gemini or OpenRouter. Cerebras and Groq use `gpt-oss-120b` by default and clean a dictation in about 0.3 s. Each provider keeps its own API key. The model removes filler words and corrects punctuation.
 - **Dictation history** with copy and delete.
 - **Runs in the background** and can start at login.
 
@@ -98,6 +98,7 @@ Utter can send each transcript to a chat model before it types the text. Turn th
 
 - **Anthropic** uses the official `anthropic` Python SDK. The default model is `claude-haiku-5-5` with low effort. Get an API key in the [Claude Console](https://console.anthropic.com/).
 - **Cerebras and Groq** run models on fast inference hardware. The default model is `gpt-oss-120b` with low reasoning effort. Get an API key from [Cerebras](https://cloud.cerebras.ai/) or [Groq](https://console.groq.com/keys).
+- **Google Gemini** uses its OpenAI-compatible endpoint. The default model is `gemini-3.5-flash-lite` with low reasoning effort. Get an API key in [Google AI Studio](https://aistudio.google.com/apikey).
 - **OpenAI-compatible providers** use the `/chat/completions` endpoint. Ollama and LM Studio run on your computer, so the text stays on your computer.
 
 Each provider keeps its own API key. If you paste a key from a different provider, Preferences tells you.
@@ -112,6 +113,9 @@ The cleanup adds its time to each dictation before Utter types the text. In Octo
 | Groq `openai/gpt-oss-120b` (default) | 0.3 to 0.4 s | 0.4 to 0.6 s | 29 of 30 | The best text from a fast provider. |
 | Groq `qwen/qwen3.8-27b` | 0.2 s | 0.3 s | 20 of 30 | The fastest, but in long dictations it types spoken punctuation such as "comma" as a word. |
 | Cerebras `qwen-3.8-27b` | 0.3 to 0.7 s | up to 2.1 s | 21 of 30 | The same punctuation errors, and slow peaks. |
+| Google `gemini-3.5-flash-lite` (default) | 0.7 s | 1.2 s | 30 of 30 | Accurate, and the fastest Gemini model. |
+| Google `gemini-3.1-flash-lite`, effort `none` | 0.9 s | 1.2 s | 30 of 30 | Accurate. |
+| Google `gemini-3.8-flash` | 1.6 s | 2.1 to 2.4 s | 30 of 30 | Accurate, but slow for dictation. |
 | Anthropic `claude-haiku-5-5` (default) | 0.8 to 0.9 s | 1.0 to 1.3 s | 30 of 30 | The most accurate, but about 3 times slower. |
 
 "Correct" means that the text has no filler words, the speaker's correction replaces the earlier phrase, and spoken punctuation becomes symbols. The times include the network. They change with your connection and with the load on the provider.

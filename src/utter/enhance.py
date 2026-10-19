@@ -40,11 +40,11 @@ class Provider:
     needs_key: bool
     api: str = "openai"  # "openai" for /chat/completions, "anthropic" for the Messages API
     default_model: str = ""
-    fast: bool = False  # Hosted on fast inference hardware. Reasoning is kept short.
+    short_reasoning: bool = False  # The provider accepts reasoning_effort for these models.
 
     def request_options(self, model: str) -> dict[str, str]:
         """Return extra /chat/completions fields that keep the reply fast."""
-        if not self.fast:
+        if not self.short_reasoning:
             return {}
         name = model.lower()
         # gpt-oss always reasons. Low effort costs about 30 tokens.
@@ -53,6 +53,10 @@ class Provider:
         # Qwen 3 reasons by default. Without "none", Cerebras takes 2 to 12 s.
         if "qwen3" in name or "qwen-3" in name:
             return {"reasoning_effort": "none"}
+        # Gemini Flash reasons by default. Each model accepts "low", but not always "none".
+        # Gemma rejects reasoning_effort.
+        if "gemini" in name:
+            return {"reasoning_effort": "low"}
         return {}
 
 
@@ -75,7 +79,7 @@ PROVIDERS: tuple[Provider, ...] = (
         "https://api.cerebras.ai/v1",
         True,
         default_model="gpt-oss-120b",
-        fast=True,
+        short_reasoning=True,
     ),
     Provider(
         "groq",
@@ -83,7 +87,16 @@ PROVIDERS: tuple[Provider, ...] = (
         "https://api.groq.com/openai/v1",
         True,
         default_model="openai/gpt-oss-120b",
-        fast=True,
+        short_reasoning=True,
+    ),
+    # Gemini 3.5 Flash-Lite cleans a dictation in about 0.7 s (tested October 2026).
+    Provider(
+        "gemini",
+        "Google Gemini",
+        "https://generativelanguage.googleapis.com/v1beta/openai",
+        True,
+        default_model="gemini-3.5-flash-lite",
+        short_reasoning=True,
     ),
     Provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", True),
     Provider("custom", "OpenAI compatible", "", True),
@@ -103,6 +116,7 @@ _KEY_PREFIXES = (
     ("sk-or-", "openrouter"),
     ("gsk_", "groq"),
     ("csk-", "cerebras"),
+    ("AIza", "gemini"),
     ("sk-", "openai"),
 )
 
@@ -241,9 +255,13 @@ def enhance(
     return clean_reply(reply, text)
 
 
-# Groq and others list speech, voice, embedding and safety classifier models with the chat
-# models. These cannot clean up a transcript.
-_NOT_CHAT = re.compile(r"whisper|orpheus|tts|embed|guard", re.IGNORECASE)
+# Groq and Gemini list speech, voice, image, video, music, embedding and safety classifier
+# models with the chat models. These cannot clean up a transcript.
+_NOT_CHAT = re.compile(
+    r"whisper|orpheus|tts|embed|guard|transcribe|audio|live|image|banana|veo|lyria|omni"
+    r"|robotics|computer-use|deep-research|antigravity|aqa",
+    re.IGNORECASE,
+)
 
 
 def list_models(
@@ -261,6 +279,8 @@ def list_models(
     if not isinstance(data, list):
         raise EnhanceError("The /models reply has no data list.")
     ids = [item.get("id") for item in data if isinstance(item, dict) and item.get("id")]
+    # Gemini gives "models/<id>". The chat endpoint accepts the id without the prefix.
+    ids = [i.removeprefix("models/") for i in ids]
     return sorted(i for i in ids if not _NOT_CHAT.search(i))
 
 
