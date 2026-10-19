@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import threading
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +15,12 @@ SAMPLE_RATE = 16000
 
 # Silence that flushes the last chunk of a streaming model. A shorter tail loses the last word.
 TAIL_PADDING = 0.66
+
+# FluidVoice timings for offline models: the first preview after 1 s, then one every 0.6 s.
+REDECODE_MIN_AUDIO = 1.0
+REDECODE_INTERVAL = 0.6
+# Parakeet needs about 55 ms per second of audio on 4 threads. Segments keep each tick short.
+REDECODE_SEGMENT = 15.0
 
 
 class RecognizerError(Exception):
@@ -38,9 +46,11 @@ class StreamingSession:
         except Exception as error:  # sherpa raises plain RuntimeError
             raise RecognizerError(f"Live recognition failed: {error}") from error
 
-    def finish(self) -> str:
-        """Flush the last chunk and return the final text. Do not use the session again."""
+    def finish(self, samples: np.ndarray | None = None) -> str:
+        """Add the last samples, flush and return the final text. Do not use the session again."""
         try:
+            if samples is not None and len(samples):
+                self._stream.accept_waveform(SAMPLE_RATE, np.asarray(samples, dtype=np.float32))
             tail = np.zeros(int(TAIL_PADDING * SAMPLE_RATE), dtype=np.float32)
             self._stream.accept_waveform(SAMPLE_RATE, tail)
             self._stream.input_finished()
@@ -55,6 +65,75 @@ class StreamingSession:
             return self._recognizer.get_result(self._stream).strip()
 
 
+class RedecodeSession:
+    """Live preview for an offline model. Decodes the recording again at intervals.
+
+    The preview decodes the recording in segments of REDECODE_SEGMENT seconds. The text of a
+    full segment stays fixed, so a tick never decodes more than one segment. finish() decodes
+    the complete recording once, so the final text does not depend on the segments.
+    """
+
+    def __init__(
+        self,
+        transcribe: Callable[[np.ndarray], str],
+        min_audio: float = REDECODE_MIN_AUDIO,
+        interval: float = REDECODE_INTERVAL,
+        segment: float = REDECODE_SEGMENT,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._transcribe = transcribe
+        self._min_samples = int(min_audio * SAMPLE_RATE)
+        self._interval = interval
+        self._segment_samples = int(segment * SAMPLE_RATE)
+        self._clock = clock
+        self._chunks: list[np.ndarray] = []
+        self._total = 0
+        self._segment_start = 0
+        self._committed = ""
+        self._current = ""
+        self._last_decode: float | None = None
+
+    def feed(self, samples) -> str:
+        """Add samples. Decodes when the interval has passed. Returns the preview text."""
+        if len(samples):
+            self._chunks.append(np.asarray(samples, dtype=np.float32))
+            self._total += len(samples)
+        if self._total < self._min_samples:
+            return self._text()
+        if self._last_decode is not None and self._clock() - self._last_decode < self._interval:
+            return self._text()
+        audio = self._audio()
+        end = min(self._total, self._segment_start + self._segment_samples)
+        text = self._transcribe(audio[self._segment_start : end])
+        if end - self._segment_start >= self._segment_samples:
+            self._committed = _join(self._committed, text)
+            self._current = ""
+            self._segment_start = end
+        elif text:
+            # FluidVoice keeps the previous preview when a decode gives no text.
+            self._current = text
+        self._last_decode = self._clock()
+        return self._text()
+
+    def finish(self, samples=None) -> str:
+        """Add the last samples and decode the complete recording."""
+        if samples is not None and len(samples):
+            self._chunks.append(np.asarray(samples, dtype=np.float32))
+        return self._transcribe(self._audio())
+
+    def _audio(self) -> np.ndarray:
+        if len(self._chunks) > 1:
+            self._chunks = [np.concatenate(self._chunks)]
+        return self._chunks[0] if self._chunks else np.zeros(0, dtype=np.float32)
+
+    def _text(self) -> str:
+        return _join(self._committed, self._current)
+
+
+def _join(first: str, second: str) -> str:
+    return f"{first} {second}".strip()
+
+
 class Recognizer:
     """Holds one loaded sherpa-onnx recogniser. Thread-safe."""
 
@@ -64,16 +143,12 @@ class Recognizer:
         self._recognizer = None
         self._key: tuple | None = None
         self._streaming = False
+        self._kind = ""
         self._language = "auto"
 
     @property
     def loaded_key(self) -> tuple | None:
         return self._key
-
-    @property
-    def is_streaming(self) -> bool:
-        """True when the loaded model decodes while the microphone records."""
-        return self._streaming
 
     def is_loaded(self, spec: ModelSpec, language: str, num_threads: int) -> bool:
         return self._key == self._make_key(spec, language, num_threads)
@@ -139,6 +214,7 @@ class Recognizer:
             self._recognizer = recognizer
             self._key = key
             self._streaming = spec.is_streaming
+            self._kind = spec.kind
             self._language = recognizer_language(spec, language)
 
     def unload(self) -> None:
@@ -146,6 +222,23 @@ class Recognizer:
             self._recognizer = None
             self._key = None
             self._streaming = False
+            self._kind = ""
+
+    def start_live(self) -> StreamingSession | RedecodeSession | None:
+        """Open a live decode on the loaded model. None when the model has no live preview.
+
+        A streaming model decodes each chunk once. A transducer model decodes the recording
+        again at intervals. Whisper models stop at 30 seconds and have no live preview.
+        """
+        with self._lock:
+            recognizer, kind = self._recognizer, self._kind
+        if recognizer is None:
+            raise RecognizerError("No speech model is loaded.")
+        if kind == "transducer":
+            return RedecodeSession(self.transcribe)
+        if kind == "streaming":
+            return self.start_stream()
+        return None
 
     def start_stream(self) -> StreamingSession:
         """Open a live decode on the loaded streaming model."""
@@ -165,9 +258,7 @@ class Recognizer:
         if recognizer is None:
             raise RecognizerError("No speech model is loaded.")
         if streaming:
-            session = self.start_stream()
-            session.feed(samples)
-            return session.finish()
+            return self.start_stream().finish(samples)
         if samples.dtype != np.float32:
             samples = samples.astype(np.float32)
         stream = recognizer.create_stream()

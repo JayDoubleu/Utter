@@ -9,7 +9,7 @@ POLL_INTERVAL = 0.1
 
 
 class LiveDecode:
-    """Feeds new microphone samples to a streaming session on one worker thread.
+    """Feeds new microphone samples to a live session on one worker thread.
 
     finish() hands over the complete recording. The worker decodes the samples that it did
     not read yet and then reports the final text. cancel() drops the session without a report.
@@ -65,10 +65,7 @@ class LiveDecode:
             on_final, recording = self._on_final, self._recording
             if on_final is None or recording is None:
                 return
-            rest = recording[consumed:]
-            if len(rest):
-                self._session.feed(rest)
-            final = self._session.finish()
+            final = self._session.finish(recording[consumed:])
         except Exception as error:  # thread boundary: an escaped error leaves the app stuck
             if self._on_final is not None or not self._stop.is_set():
                 self._on_error(str(error))

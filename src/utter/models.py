@@ -100,7 +100,7 @@ CATALOGUE: tuple[ModelSpec, ...] = (
     ModelSpec(
         id="parakeet-tdt-0.6b-v2",
         name="Parakeet TDT 0.6B v2",
-        summary="Fast and accurate. English only.",
+        summary="Fast and accurate. Punctuation and capitalisation.",
         kind="transducer",
         dirname="sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
         files={
@@ -115,7 +115,7 @@ CATALOGUE: tuple[ModelSpec, ...] = (
     ModelSpec(
         id="nemotron-3.5-streaming",
         name="Nemotron 3.5 Streaming",
-        summary="Shows the text while you speak. Lowest delay after you stop.",
+        summary="Decodes while you speak. Lowest delay after you stop.",
         kind="streaming",
         dirname="sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-320ms-int8-2026-06-11",
         files={

@@ -15,7 +15,8 @@ class FakeSession:
         self.fed.extend(samples)
         return f"{len(self.fed)} samples"
 
-    def finish(self) -> str:
+    def finish(self, samples) -> str:
+        self.fed.extend(samples)
         self.finished = True
         return f"final {len(self.fed)}"
 

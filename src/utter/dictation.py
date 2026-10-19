@@ -166,9 +166,10 @@ class Dictation(GObject.Object):
     def _begin_listening(self) -> None:
         live = None
         try:
-            if self.recognizer.is_streaming:
+            session = self.recognizer.start_live()
+            if session is not None:
                 live = LiveDecode(
-                    self.recognizer.start_stream(),
+                    session,
                     self.audio.read_new,
                     on_partial=lambda text: run_on_main(self._on_live_partial, live, text),
                     on_error=lambda message: run_on_main(self._on_live_error, message),
@@ -203,7 +204,7 @@ class Dictation(GObject.Object):
             return
         self._set_state("transcribing")
         if live is not None:
-            # The live decode has the text already. It decodes only the last samples.
+            # The live session decodes the samples that it did not read yet, then the final text.
             started = time.monotonic()
             live.finish(samples, lambda raw: self._postprocess(raw, duration, started))
             return
