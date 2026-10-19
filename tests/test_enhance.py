@@ -94,8 +94,12 @@ def test_model_for_provider_replaces_a_model_of_a_different_provider():
     assert model_for_provider(groq, "claude-haiku-5-5") == "openai/gpt-oss-120b"
     assert model_for_provider(groq, "") == "openai/gpt-oss-120b"
     assert model_for_provider(groq, "qwen/qwen3.8-27b") == "qwen/qwen3.8-27b"
-    assert model_for_provider(find_provider("openai"), "gpt-oss-120b") == ""
+    assert model_for_provider(find_provider("cerebras"), "openai/gpt-oss-120b") == "gpt-oss-120b"
+    openrouter = find_provider("openrouter")
+    assert model_for_provider(openrouter, "openai/gpt-oss-120b") == "openai/gpt-oss-120b"
+    assert model_for_provider(openrouter, "claude-haiku-5-5") == ""
     assert model_for_provider(find_provider("ollama"), "llama3") == "llama3"
+    assert model_for_provider(find_provider("anthropic"), "gpt-oss-120b") == "claude-haiku-5-5"
 
 
 def test_list_models_sorted(server):

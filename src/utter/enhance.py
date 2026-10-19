@@ -116,10 +116,21 @@ def provider_for_key(api_key: str) -> str | None:
 
 
 def model_for_provider(spec: Provider, model: str) -> str:
-    """Replace an empty model, or the default model of a different provider."""
-    others = {p.default_model for p in PROVIDERS if p.default_model and p.id != spec.id}
-    if not model.strip() or model in others:
+    """Replace an empty model, or a model that belongs to a different provider.
+
+    Many servers use the same model ids, for example "openai/gpt-oss-120b" on Groq,
+    OpenRouter and LM Studio. A provider without a default model keeps such a model and
+    loses only the default model of a provider with a different API.
+    """
+    if not model.strip():
         return spec.default_model
+    for other in PROVIDERS:
+        if other.id == spec.id or other.default_model != model:
+            continue
+        if spec.default_model:
+            return spec.default_model
+        if other.api != spec.api:
+            return ""
     return model
 
 
