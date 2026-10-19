@@ -299,6 +299,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
             spec = find_provider(self.settings.get_string("enhance-provider"))
             if spec.base_url:
                 self.settings.set_string("enhance-base-url", spec.base_url)
+            if spec.default_model:
+                self.settings.set_string("enhance-model", spec.default_model)
             self.api_key.set_sensitive(spec.needs_key)
 
         self.settings.connect("changed::enhance-provider", on_provider_changed)
@@ -349,10 +351,11 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self.model_popover.set_child(spinner)
         base_url = self.settings.get_string("enhance-base-url")
         api_key = self.api_key.get_text()
+        api = find_provider(self.settings.get_string("enhance-provider")).api
 
         def worker() -> None:
             try:
-                models = list_models(base_url, api_key)
+                models = list_models(base_url, api_key, api=api)
             except EnhanceError as error:
                 run_on_main(self._show_models, None, str(error))
                 return
@@ -408,6 +411,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
                     api_key=load_secret("enhance-api-key"),
                     prompt=settings.get_string("enhance-prompt"),
                     timeout=settings.get_int("enhance-timeout"),
+                    api=find_provider(settings.get_string("enhance-provider")).api,
                 )
             except EnhanceError as error:
                 run_on_main(self.add_toast, Adw.Toast(title=f"Failed: {error}", timeout=6))

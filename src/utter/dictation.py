@@ -9,7 +9,7 @@ import numpy as np
 from gi.repository import Gio, GObject
 
 from .audio import SAMPLE_RATE, AudioCapture, AudioError
-from .enhance import EnhanceError, enhance
+from .enhance import EnhanceError, enhance, find_provider
 from .formatting import format_transcript
 from .history import History
 from .injector import TextInjector
@@ -255,6 +255,7 @@ class Dictation(GObject.Object):
                     api_key=load_secret("enhance-api-key"),
                     prompt=self.settings.get_string("enhance-prompt"),
                     timeout=self.settings.get_int("enhance-timeout"),
+                    api=find_provider(self.settings.get_string("enhance-provider")).api,
                 )
             except EnhanceError as error:
                 run_on_main(self.emit, "notice", f"Enhancement skipped: {error}")

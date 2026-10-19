@@ -4,7 +4,14 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from utter.enhance import EnhanceError, clean_reply, enhance, list_models, strip_thinking
+from utter.enhance import (
+    DEFAULT_PROMPT,
+    EnhanceError,
+    clean_reply,
+    enhance,
+    list_models,
+    strip_thinking,
+)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -46,7 +53,7 @@ def test_enhance_round_trip(server):
     out = enhance("raw text", base_url=server, model="m", api_key="k", prompt="")
     assert out == "Cleaned text."
     assert Handler.last_request["model"] == "m"
-    assert Handler.last_request["messages"][1]["content"] == "raw text"
+    assert json.loads(Handler.last_request["messages"][1]["content"]) == {"transcript": "raw text"}
     assert Handler.last_request["_auth"] == "Bearer k"
 
 
@@ -70,3 +77,116 @@ def test_strip_thinking_and_clean_reply():
     assert clean_reply("", "orig") == "orig"
     assert clean_reply("```\ncode\n```", "orig") == "code"
     assert clean_reply('"quoted"', '"quoted"') == '"quoted"'
+
+
+class AnthropicHandler(BaseHTTPRequestHandler):
+    """A fake Messages API. reply_status and stop_reason set the next reply."""
+
+    last_request: dict = {}
+    last_api_key: str | None = None
+    reply_status = 200
+    stop_reason = "end_turn"
+
+    def log_message(self, *_args):
+        pass
+
+    def _send(self, status: int, body: dict) -> None:
+        data = json.dumps(body).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_POST(self):
+        length = int(self.headers["Content-Length"])
+        AnthropicHandler.last_request = json.loads(self.rfile.read(length))
+        AnthropicHandler.last_api_key = self.headers.get("x-api-key")
+        if self.reply_status != 200:
+            error = {"type": "authentication_error", "message": "invalid x-api-key"}
+            self._send(self.reply_status, {"type": "error", "error": error})
+            return
+        self._send(
+            200,
+            {
+                "id": "msg_1",
+                "type": "message",
+                "role": "assistant",
+                "model": AnthropicHandler.last_request["model"],
+                "content": [{"type": "text", "text": "Cleaned by Claude."}],
+                "stop_reason": self.stop_reason,
+                "stop_sequence": None,
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            },
+        )
+
+    def do_GET(self):
+        models = [
+            {"type": "model", "id": i, "display_name": i, "created_at": "2026-01-01T00:00:00Z"}
+            for i in ("claude-sonnet-5-5", "claude-haiku-5-5")
+        ]
+        self._send(
+            200,
+            {"data": models, "has_more": False, "first_id": models[0]["id"], "last_id": None},
+        )
+
+
+@pytest.fixture
+def anthropic_server():
+    AnthropicHandler.reply_status = 200
+    AnthropicHandler.stop_reason = "end_turn"
+    httpd = HTTPServer(("127.0.0.1", 0), AnthropicHandler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{httpd.server_port}"
+    httpd.shutdown()
+
+
+def anthropic_enhance(base_url: str, api_key: str = "sk-test") -> str:
+    return enhance(
+        "um so the meeting is at three",
+        base_url=base_url,
+        model="claude-haiku-5-5",
+        api_key=api_key,
+        api="anthropic",
+        timeout=5,
+    )
+
+
+def test_anthropic_round_trip(anthropic_server):
+    assert anthropic_enhance(anthropic_server) == "Cleaned by Claude."
+    request = AnthropicHandler.last_request
+    assert request["model"] == "claude-haiku-5-5"
+    assert request["system"] == DEFAULT_PROMPT
+    assert request["output_config"] == {"effort": "low"}
+    content = json.loads(request["messages"][0]["content"])
+    assert content == {"transcript": "um so the meeting is at three"}
+    assert AnthropicHandler.last_api_key == "sk-test"
+
+
+def test_anthropic_refusal_is_an_error(anthropic_server):
+    AnthropicHandler.stop_reason = "refusal"
+    with pytest.raises(EnhanceError, match="declined"):
+        anthropic_enhance(anthropic_server)
+
+
+def test_anthropic_cut_off_text_is_an_error(anthropic_server):
+    AnthropicHandler.stop_reason = "max_tokens"
+    with pytest.raises(EnhanceError, match="cut it off"):
+        anthropic_enhance(anthropic_server)
+
+
+def test_anthropic_bad_key(anthropic_server):
+    AnthropicHandler.reply_status = 401
+    with pytest.raises(EnhanceError, match="API key"):
+        anthropic_enhance(anthropic_server)
+
+
+def test_anthropic_needs_a_key():
+    with pytest.raises(EnhanceError, match="No API key"):
+        anthropic_enhance("http://127.0.0.1:9", api_key="")
+
+
+def test_anthropic_list_models(anthropic_server):
+    models = list_models(anthropic_server, "sk-test", api="anthropic")
+    assert models == ["claude-haiku-5-5", "claude-sonnet-5-5"]
