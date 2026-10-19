@@ -12,22 +12,26 @@ from pathlib import Path
 RELEASE_BASE = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
 USER_AGENT = "Utter (https://github.com/JayDoubleu/Utter)"
 
-# Languages that Whisper multilingual models and Nemotron accept. Parakeet v3 detects the
-# language itself.
+# Every language that the Language preference can hold. A code with a region is a Nemotron locale.
 LANGUAGES: tuple[tuple[str, str], ...] = (
     ("auto", "Detect automatically"),
     ("en", "English"),
+    ("en-GB", "English (United Kingdom)"),
     ("de", "German"),
     ("fr", "French"),
+    ("fr-CA", "French (Canada)"),
     ("es", "Spanish"),
+    ("es-ES", "Spanish (Spain)"),
     ("it", "Italian"),
     ("pt", "Portuguese"),
+    ("pt-BR", "Portuguese (Brazil)"),
     ("nl", "Dutch"),
     ("pl", "Polish"),
     ("sv", "Swedish"),
     ("da", "Danish"),
     ("nb", "Norwegian"),
     ("fi", "Finnish"),
+    ("et", "Estonian"),
     ("cs", "Czech"),
     ("sk", "Slovak"),
     ("hu", "Hungarian"),
@@ -41,9 +45,16 @@ LANGUAGES: tuple[tuple[str, str], ...] = (
     ("ja", "Japanese"),
     ("zh", "Chinese"),
     ("ko", "Korean"),
+    ("vi", "Vietnamese"),
     ("ar", "Arabic"),
     ("hi", "Hindi"),
 )
+
+# Nemotron 3.5 transcribes these languages without fine-tuning. Greek is not one of them.
+_NEMOTRON_UNSUPPORTED = frozenset({"el"})
+
+# Whisper names Norwegian "no". sherpa-onnx exits the process on a code that Whisper does not know.
+_WHISPER_CODES = {"nb": "no"}
 
 
 @dataclass(frozen=True)
@@ -171,6 +182,36 @@ def find_spec(model_id: str) -> ModelSpec | None:
         if spec.id == model_id:
             return spec
     return None
+
+
+def language_choices(spec: ModelSpec) -> tuple[tuple[str, str], ...]:
+    """Return the (code, name) pairs that spec accepts. Empty when spec takes no language."""
+    if not spec.multilingual:
+        return ()
+    if spec.kind == "whisper":
+        return tuple(item for item in LANGUAGES if "-" not in item[0])
+    if spec.kind == "streaming":
+        return tuple(item for item in LANGUAGES if item[0] not in _NEMOTRON_UNSUPPORTED)
+    return ()
+
+
+def effective_language(spec: ModelSpec, language: str) -> str:
+    """Return the choice of spec that is nearest to the Language preference."""
+    codes = [code for code, _name in language_choices(spec)]
+    if language in codes:
+        return language
+    base = language.partition("-")[0]
+    return base if base in codes else "auto"
+
+
+def recognizer_language(spec: ModelSpec, language: str) -> str:
+    """Return the language string that sherpa-onnx accepts for spec."""
+    if spec.kind == "whisper":
+        if not spec.multilingual:
+            return "en"
+        code = effective_language(spec, language)
+        return "" if code == "auto" else _WHISPER_CODES.get(code, code)
+    return effective_language(spec, language)
 
 
 def model_directory(root: Path, spec: ModelSpec) -> Path:

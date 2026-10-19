@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .models import ModelSpec, model_files
+from .models import ModelSpec, model_files, recognizer_language
 
 SAMPLE_RATE = 16000
 
@@ -108,15 +108,11 @@ class Recognizer:
                     model_type="nemo_transducer",
                 )
             elif spec.kind == "whisper":
-                if spec.multilingual:
-                    whisper_language = "" if language == "auto" else language
-                else:
-                    whisper_language = "en"
                 recognizer = sherpa_onnx.OfflineRecognizer.from_whisper(
                     encoder=paths["encoder"],
                     decoder=paths["decoder"],
                     tokens=paths["tokens"],
-                    language=whisper_language,
+                    language=recognizer_language(spec, language),
                     task="transcribe",
                     num_threads=threads,
                 )
@@ -143,7 +139,7 @@ class Recognizer:
             self._recognizer = recognizer
             self._key = key
             self._streaming = spec.is_streaming
-            self._language = language
+            self._language = recognizer_language(spec, language)
 
     def unload(self) -> None:
         with self._lock:

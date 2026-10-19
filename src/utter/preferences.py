@@ -9,7 +9,7 @@ from gi.repository import Adw, Gio, GLib, Gtk
 from .audio import list_input_devices
 from .enhance import DEFAULT_PROMPT, PROVIDERS, EnhanceError, enhance, find_provider, list_models
 from .mainthread import run_on_main
-from .models import CATALOGUE, LANGUAGES, find_spec
+from .models import CATALOGUE, effective_language, find_spec, language_choices
 from .secrets import load_secret, store_secret
 
 ACTIVATION_MODES = (
@@ -157,13 +157,17 @@ class PreferencesDialog(Adw.PreferencesDialog):
 
         group = Adw.PreferencesGroup(title="Recognition")
         page.add(group)
-        language = _combo(
-            "Language",
-            "Whisper and Nemotron models use this. Parakeet detects the language.",
-            [name for _code, name in LANGUAGES],
+        self.language_row = Adw.ComboRow(title="Language", enable_search=True)
+        self.language_row.set_expression(
+            Gtk.PropertyExpression.new(Gtk.StringObject, None, "string")
         )
-        self._bind_choice(language, "language", [code for code, _ in LANGUAGES])
-        group.add(language)
+        self._language_codes: list[str] = []
+        self._language_busy = False
+        self.language_row.connect("notify::selected", self._on_language_selected)
+        for key in ("model-id", "language"):
+            self.settings.connect(f"changed::{key}", lambda *_: self._refresh_language_row())
+        self._refresh_language_row()
+        group.add(self.language_row)
         threads = Adw.SpinRow.new_with_range(1, 32, 1)
         threads.set_title("CPU threads")
         self.settings.bind("num-threads", threads, "value", Gio.SettingsBindFlags.DEFAULT)
@@ -177,6 +181,44 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._bind_choice(microphone, "audio-device", [name for name, _ in devices])
         group.add(microphone)
         return page
+
+    def _refresh_language_row(self) -> None:
+        """Show the languages of the selected model and the language that it will use."""
+        if self._language_busy:
+            return
+        spec = find_spec(self.settings.get_string("model-id")) or CATALOGUE[0]
+        choices = language_choices(spec)
+        if choices:
+            subtitle = "“Detect automatically” lets the model find the language"
+        elif spec.multilingual:
+            choices = (("auto", "Detected by the model"),)
+            subtitle = f"{spec.name} detects the language itself"
+        else:
+            choices = (("en", "English"),)
+            subtitle = f"{spec.name} supports English only"
+        codes = [code for code, _name in choices]
+        current = effective_language(spec, self.settings.get_string("language"))
+        self._language_busy = True
+        if codes != self._language_codes:
+            self._language_codes = codes
+            self.language_row.set_model(Gtk.StringList.new([name for _code, name in choices]))
+        if current in codes:
+            self.language_row.set_selected(codes.index(current))
+        self._language_busy = False
+        self.language_row.set_subtitle(subtitle)
+        self.language_row.set_sensitive(len(choices) > 1)
+
+    def _on_language_selected(self, *_args) -> None:
+        if self._language_busy:
+            return
+        index = self.language_row.get_selected()
+        if 0 <= index < len(self._language_codes):
+            code = self._language_codes[index]
+            if self.settings.get_string("language") != code:
+                # The row must not rebuild its model inside its own selection signal.
+                self._language_busy = True
+                self.settings.set_string("language", code)
+                self._language_busy = False
 
     def _refresh_model_status(self) -> None:
         spec = find_spec(self.settings.get_string("model-id")) or CATALOGUE[0]

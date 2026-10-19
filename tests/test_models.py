@@ -4,10 +4,14 @@ import tarfile
 from utter.models import (
     CATALOGUE,
     DEFAULT_MODEL_ID,
+    LANGUAGES,
     ModelSpec,
+    effective_language,
     find_spec,
     install_model,
     is_installed,
+    language_choices,
+    recognizer_language,
     remove_model,
 )
 
@@ -58,3 +62,35 @@ def test_install_and_remove(tmp_path):
     assert not (root / "model-dir.tar.bz2.part").exists()
     remove_model(root, spec)
     assert not is_installed(root, spec)
+
+
+def test_language_codes_are_unique():
+    codes = [code for code, _name in LANGUAGES]
+    assert len(codes) == len(set(codes))
+    assert codes[0] == "auto"
+
+
+def test_language_choices_follow_the_model():
+    nemotron = find_spec("nemotron-3.5-streaming")
+    whisper = find_spec("whisper-small")
+    nemotron_codes = [code for code, _name in language_choices(nemotron)]
+    whisper_codes = [code for code, _name in language_choices(whisper)]
+    assert {"auto", "en", "en-GB", "pt-BR"} <= set(nemotron_codes)
+    assert "el" not in nemotron_codes
+    assert "en-GB" not in whisper_codes and "el" in whisper_codes
+    assert language_choices(find_spec("parakeet-tdt-0.6b-v3")) == ()
+    assert language_choices(find_spec("whisper-base.en")) == ()
+
+
+def test_recognizer_language():
+    nemotron = find_spec("nemotron-3.5-streaming")
+    whisper = find_spec("whisper-small")
+    assert recognizer_language(nemotron, "en-GB") == "en-GB"
+    assert recognizer_language(nemotron, "auto") == "auto"
+    assert recognizer_language(nemotron, "el") == "auto"
+    assert recognizer_language(whisper, "auto") == ""
+    assert recognizer_language(whisper, "en-GB") == "en"
+    assert recognizer_language(whisper, "nb") == "no"
+    assert recognizer_language(whisper, "xx") == ""
+    assert recognizer_language(find_spec("whisper-base.en"), "de") == "en"
+    assert effective_language(whisper, "pt-BR") == "pt"
