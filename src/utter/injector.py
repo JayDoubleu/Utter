@@ -7,13 +7,16 @@ from collections.abc import Callable
 
 from gi.repository import Gdk, Gio, GLib, GObject
 
-from .portal import PORTAL_BUS, PORTAL_PATH, RESPONSE_OK, Portal
+from .portal import PORTAL_BUS, PORTAL_PATH, RESPONSE_OK, SESSION_IFACE, Portal
 
 REMOTE_DESKTOP = "org.freedesktop.portal.RemoteDesktop"
 CLIPBOARD = "org.freedesktop.portal.Clipboard"
 
 DEVICE_KEYBOARD = 1
 PERSIST_UNTIL_REVOKED = 2
+# Seconds that the session stays open after a delivery. The app that gets a paste reads the
+# clipboard after Ctrl+V, and the selection goes away with the session.
+CLOSE_DELAY = 3
 
 KEY_LEFTCTRL = 29
 KEY_LEFTSHIFT = 42
@@ -56,6 +59,8 @@ class TextInjector(GObject.Object):
         self._waiters: list[Callable[[bool], None]] = []
         self._subscriptions: list[int] = []
         self._selection: bytes = b""
+        self._close_timer = 0
+        self._delivering = False
 
     @property
     def is_ready(self) -> bool:
@@ -154,6 +159,7 @@ class TextInjector(GObject.Object):
             self.settings.set_string("remote-desktop-token", token)
         self.clipboard_enabled = bool(results.get("clipboard_enabled", False))
         self._finish(True, "ready")
+        self._schedule_close()
 
     def _finish(self, ok: bool, state: str, message: str = "") -> None:
         if not ok:
@@ -169,6 +175,42 @@ class TextInjector(GObject.Object):
         self._subscriptions = []
         self.session = None
         self.clipboard_enabled = False
+
+    def close_session(self) -> None:
+        """Close the portal session. GNOME shows the remote control icon while it is open."""
+        self._cancel_close()
+        session = self.session
+        if session is None or self.state != "ready":
+            return
+        self._drop_session()
+        self.portal.bus.call(
+            PORTAL_BUS,
+            session,
+            SESSION_IFACE,
+            "Close",
+            None,
+            None,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            None,
+            None,
+        )
+        self._set_state("idle", "Granted. Utter connects for each dictation.")
+
+    def _schedule_close(self) -> None:
+        self._cancel_close()
+        self._close_timer = GLib.timeout_add_seconds(CLOSE_DELAY, self._on_close_timer)
+
+    def _cancel_close(self) -> None:
+        if self._close_timer:
+            GLib.source_remove(self._close_timer)
+            self._close_timer = 0
+
+    def _on_close_timer(self) -> bool:
+        self._close_timer = 0
+        if not self._delivering:
+            self.close_session()
+        return GLib.SOURCE_REMOVE
 
     def _on_closed(self) -> None:
         self._drop_session()
@@ -186,6 +228,13 @@ class TextInjector(GObject.Object):
         if not text:
             on_done(True, "")
             return
+        self._cancel_close()
+        self._delivering = True
+
+        def finished(ok: bool, notice: str) -> None:
+            self._delivering = False
+            self._schedule_close()
+            on_done(ok, notice)
 
         def go(ok: bool) -> None:
             if not ok:
@@ -195,9 +244,9 @@ class TextInjector(GObject.Object):
                     "Copied to the clipboard. " + (self.message or "Typing is not available."),
                 )
             elif mode == "paste":
-                self._paste(text, use_shift, on_done)
+                self._paste(text, use_shift, finished)
             else:
-                self._type(text, on_done)
+                self._type(text, finished)
 
         self.connect_session(go)
 
