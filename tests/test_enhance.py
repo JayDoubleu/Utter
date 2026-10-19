@@ -9,13 +9,17 @@ from utter.enhance import (
     EnhanceError,
     clean_reply,
     enhance,
+    find_provider,
     list_models,
+    model_for_provider,
+    provider_for_key,
     strip_thinking,
 )
 
 
 class Handler(BaseHTTPRequestHandler):
     last_request: dict = {}
+    status = 200
 
     def log_message(self, *_args):
         pass
@@ -24,6 +28,9 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers["Content-Length"])
         Handler.last_request = json.loads(self.rfile.read(length))
         Handler.last_request["_auth"] = self.headers.get("Authorization")
+        if Handler.status != 200:
+            self.send_error(Handler.status)
+            return
         reply = {"choices": [{"message": {"content": '<think>hmm</think>"Cleaned text."'}}]}
         body = json.dumps(reply).encode()
         self.send_response(200)
@@ -33,7 +40,17 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        body = json.dumps({"data": [{"id": "b-model"}, {"id": "a-model"}]}).encode()
+        models = [
+            "b-model",
+            "models/a-model",
+            "whisper-large-v3",
+            "meta-llama/llama-prompt-guard-2-22m",
+            "models/gemini-3.1-flash-image",
+            "models/gemini-3.8-flash-tts",
+            "models/gemini-embedding-2",
+            "models/veo-3.1-generate-preview",
+        ]
+        body = json.dumps({"data": [{"id": m} for m in models]}).encode()
         self.send_response(200)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -42,6 +59,7 @@ class Handler(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def server():
+    Handler.status = 200
     httpd = HTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -57,6 +75,49 @@ def test_enhance_round_trip(server):
     assert Handler.last_request["_auth"] == "Bearer k"
 
 
+def test_enhance_sends_options(server):
+    enhance("raw text", base_url=server, model="m", options={"reasoning_effort": "low"})
+    assert Handler.last_request["reasoning_effort"] == "low"
+
+
+def test_providers_keep_reasoning_short():
+    for provider_id in ("cerebras", "groq"):
+        spec = find_provider(provider_id)
+        assert spec.request_options(spec.default_model) == {"reasoning_effort": "low"}
+        assert spec.request_options("qwen-3.8-27b") == {"reasoning_effort": "none"}
+        assert spec.request_options("llama-3.3-70b") == {}
+    gemini = find_provider("gemini")
+    assert gemini.request_options(gemini.default_model) == {"reasoning_effort": "low"}
+    assert gemini.request_options("gemma-4-31b-it") == {}
+    assert find_provider("ollama").request_options("gpt-oss:20b") == {}
+
+
+def test_provider_for_key():
+    assert provider_for_key("sk-ant-api03-x") == "anthropic"
+    assert provider_for_key("sk-or-v1-x") == "openrouter"
+    assert provider_for_key("sk-proj-x") == "openai"
+    assert provider_for_key("gsk_x") == "groq"
+    assert provider_for_key("csk-x") == "cerebras"
+    assert provider_for_key("AIzaSyX") == "gemini"
+    assert provider_for_key("abc") is None
+
+
+def test_model_for_provider_replaces_a_model_of_a_different_provider():
+    groq = find_provider("groq")
+    assert model_for_provider(groq, "claude-haiku-5-5") == "openai/gpt-oss-120b"
+    assert model_for_provider(groq, "") == "openai/gpt-oss-120b"
+    assert model_for_provider(groq, "qwen/qwen3.8-27b") == "qwen/qwen3.8-27b"
+    assert model_for_provider(find_provider("cerebras"), "openai/gpt-oss-120b") == "gpt-oss-120b"
+    openrouter = find_provider("openrouter")
+    assert model_for_provider(openrouter, "openai/gpt-oss-120b") == "openai/gpt-oss-120b"
+    assert model_for_provider(openrouter, "claude-haiku-5-5") == ""
+    assert model_for_provider(find_provider("ollama"), "llama3") == "llama3"
+    assert model_for_provider(find_provider("anthropic"), "gpt-oss-120b") == "claude-haiku-5-5"
+    gemini = find_provider("gemini")
+    assert model_for_provider(gemini, "openai/gpt-oss-120b") == "gemini-3.5-flash-lite"
+    assert model_for_provider(gemini, "gemini-3.8-flash") == "gemini-3.8-flash"
+
+
 def test_list_models_sorted(server):
     assert list_models(server) == ["a-model", "b-model"]
 
@@ -64,6 +125,12 @@ def test_list_models_sorted(server):
 def test_enhance_requires_model():
     with pytest.raises(EnhanceError):
         enhance("x", base_url="http://localhost:1", model="")
+
+
+def test_enhance_bad_key(server):
+    Handler.status = 401
+    with pytest.raises(EnhanceError, match="127.0.0.1 did not accept the API key"):
+        enhance("x", base_url=server, model="m", api_key="wrong")
 
 
 def test_enhance_unreachable():
@@ -77,6 +144,7 @@ def test_strip_thinking_and_clean_reply():
     assert clean_reply("", "orig") == "orig"
     assert clean_reply("```\ncode\n```", "orig") == "code"
     assert clean_reply('"quoted"', '"quoted"') == '"quoted"'
+    assert clean_reply("At 3\u202fpm", "orig") == "At 3 pm"
 
 
 class AnthropicHandler(BaseHTTPRequestHandler):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -39,6 +40,24 @@ class Provider:
     needs_key: bool
     api: str = "openai"  # "openai" for /chat/completions, "anthropic" for the Messages API
     default_model: str = ""
+    short_reasoning: bool = False  # The provider accepts reasoning_effort for these models.
+
+    def request_options(self, model: str) -> dict[str, str]:
+        """Return extra /chat/completions fields that keep the reply fast."""
+        if not self.short_reasoning:
+            return {}
+        name = model.lower()
+        # gpt-oss always reasons. Low effort costs about 30 tokens.
+        if "gpt-oss" in name:
+            return {"reasoning_effort": "low"}
+        # Qwen 3 reasons by default. Without "none", Cerebras takes 2 to 12 s.
+        if "qwen3" in name or "qwen-3" in name:
+            return {"reasoning_effort": "none"}
+        # Gemini Flash reasons by default. Each model accepts "low", but not always "none".
+        # Gemma rejects reasoning_effort.
+        if "gemini" in name:
+            return {"reasoning_effort": "low"}
+        return {}
 
 
 PROVIDERS: tuple[Provider, ...] = (
@@ -53,7 +72,32 @@ PROVIDERS: tuple[Provider, ...] = (
         default_model="claude-haiku-5-5",
     ),
     Provider("openai", "OpenAI", "https://api.openai.com/v1", True),
-    Provider("groq", "Groq", "https://api.groq.com/openai/v1", True),
+    # gpt-oss-120b on Cerebras and Groq cleans a dictation in about 0.3 s (tested October 2026).
+    Provider(
+        "cerebras",
+        "Cerebras",
+        "https://api.cerebras.ai/v1",
+        True,
+        default_model="gpt-oss-120b",
+        short_reasoning=True,
+    ),
+    Provider(
+        "groq",
+        "Groq",
+        "https://api.groq.com/openai/v1",
+        True,
+        default_model="openai/gpt-oss-120b",
+        short_reasoning=True,
+    ),
+    # Gemini 3.5 Flash-Lite cleans a dictation in about 0.7 s (tested October 2026).
+    Provider(
+        "gemini",
+        "Google Gemini",
+        "https://generativelanguage.googleapis.com/v1beta/openai",
+        True,
+        default_model="gemini-3.5-flash-lite",
+        short_reasoning=True,
+    ),
     Provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", True),
     Provider("custom", "OpenAI compatible", "", True),
 )
@@ -64,6 +108,44 @@ def find_provider(provider_id: str) -> Provider:
         if provider.id == provider_id:
             return provider
     return PROVIDERS[-1]
+
+
+# The first match wins, so "sk-ant-" and "sk-or-" come before "sk-".
+_KEY_PREFIXES = (
+    ("sk-ant-", "anthropic"),
+    ("sk-or-", "openrouter"),
+    ("gsk_", "groq"),
+    ("csk-", "cerebras"),
+    ("AIza", "gemini"),
+    ("sk-", "openai"),
+)
+
+
+def provider_for_key(api_key: str) -> str | None:
+    """Return the id of the provider that issues keys with this prefix, or None."""
+    for prefix, provider_id in _KEY_PREFIXES:
+        if api_key.startswith(prefix):
+            return provider_id
+    return None
+
+
+def model_for_provider(spec: Provider, model: str) -> str:
+    """Replace an empty model, or a model that belongs to a different provider.
+
+    Many servers use the same model ids, for example "openai/gpt-oss-120b" on Groq,
+    OpenRouter and LM Studio. A provider without a default model keeps such a model and
+    loses only the default model of a provider with a different API.
+    """
+    if not model.strip():
+        return spec.default_model
+    for other in PROVIDERS:
+        if other.id == spec.id or other.default_model != model:
+            continue
+        if spec.default_model:
+            return spec.default_model
+        if other.api != spec.api:
+            return ""
+    return model
 
 
 class EnhanceError(Exception):
@@ -81,9 +163,13 @@ def strip_thinking(text: str) -> str:
     return text.strip()
 
 
+# gpt-oss writes "3\u202fpm". The injector types plain spaces only.
+_ODD_SPACES = str.maketrans({"\u00a0": " ", "\u202f": " ", "\u2007": " "})
+
+
 def clean_reply(reply: str, original: str) -> str:
     """Strip reasoning and wrapping quotes. Fall back to the original when empty."""
-    text = strip_thinking(reply)
+    text = strip_thinking(reply).translate(_ODD_SPACES)
     if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'“”":
         inner = text[1:-1].strip()
         if inner and not (original.startswith(text[0]) and original.endswith(text[-1])):
@@ -105,6 +191,9 @@ def _request(url: str, api_key: str, payload: dict | None, timeout: int) -> dict
         with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode())
     except urllib.error.HTTPError as error:
+        if error.code in (401, 403):
+            host = urllib.parse.urlsplit(url).hostname or url
+            raise EnhanceError(f"{host} did not accept the API key.") from error
         body = error.read().decode(errors="replace")[:300]
         raise EnhanceError(f"HTTP {error.code} from {url}: {body}") from error
     except urllib.error.URLError as error:
@@ -129,8 +218,12 @@ def enhance(
     prompt: str = "",
     timeout: int = 30,
     api: str = "openai",
+    options: dict[str, str] | None = None,
 ) -> str:
-    """Return the cleaned text. Raises EnhanceError on failure."""
+    """Return the cleaned text. Raises EnhanceError on failure.
+
+    The options go into the /chat/completions request as extra fields.
+    """
     if not text.strip():
         return text
     if not model.strip():
@@ -150,6 +243,7 @@ def enhance(
             {"role": "system", "content": system},
             {"role": "user", "content": user_content(text)},
         ],
+        **(options or {}),
     }
     body = _request(url, api_key, payload, timeout)
     try:
@@ -159,6 +253,15 @@ def enhance(
     if not isinstance(reply, str):
         raise EnhanceError("The reply content is not text.")
     return clean_reply(reply, text)
+
+
+# Groq and Gemini list speech, voice, image, video, music, embedding and safety classifier
+# models with the chat models. These cannot clean up a transcript.
+_NOT_CHAT = re.compile(
+    r"whisper|orpheus|tts|embed|guard|transcribe|audio|live|image|banana|veo|lyria|omni"
+    r"|robotics|computer-use|deep-research|antigravity|aqa",
+    re.IGNORECASE,
+)
 
 
 def list_models(
@@ -176,7 +279,9 @@ def list_models(
     if not isinstance(data, list):
         raise EnhanceError("The /models reply has no data list.")
     ids = [item.get("id") for item in data if isinstance(item, dict) and item.get("id")]
-    return sorted(ids)
+    # Gemini gives "models/<id>". The chat endpoint accepts the id without the prefix.
+    ids = [i.removeprefix("models/") for i in ids]
+    return sorted(i for i in ids if not _NOT_CHAT.search(i))
 
 
 # ---- Anthropic ----------------------------------------------------------------------------
