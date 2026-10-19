@@ -38,13 +38,22 @@ mkdir -p "$REPO"
 if [[ ! -f "$REPO/config" ]]; then
     ostree init --mode=archive-z2 --repo="$REPO"
 fi
-if [[ "$MIRROR" == 1 ]] && curl -fsS -o /dev/null "$PAGES_URL/repo/config"; then
+live_status=404
+if [[ "$MIRROR" == 1 ]]; then
+    live_status="$(curl -sS -o /dev/null -w '%{http_code}' --retry 3 --retry-all-errors \
+        "$PAGES_URL/repo/config")" || die "cannot reach $PAGES_URL"
+fi
+# Only a 404 means that no live repository exists. Any other error must stop the build,
+# because a new history replaces the live one at the deploy.
+if [[ "$live_status" == 200 ]]; then
     echo "Mirroring the last $HISTORY_DEPTH commits from $PAGES_URL/repo/"
     ostree remote add --repo="$REPO" --if-not-exists --gpg-import="$PUBLIC_KEY" live "$PAGES_URL/repo/"
     ostree pull --repo="$REPO" --mirror --depth="$HISTORY_DEPTH" live
     ostree remote delete --repo="$REPO" live
-else
+elif [[ "$live_status" == 404 ]]; then
     echo "No live repository: the new commit has no parent."
+else
+    die "HTTP $live_status for $PAGES_URL/repo/config"
 fi
 
 BUILD_DIR="${BUILD_DIR:-$SOURCE_DIR/_flatpak}"

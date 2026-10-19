@@ -35,8 +35,9 @@ defaults:
 
 concurrency:
   # A second release waits. A cancelled deploy can leave a half-published repository.
-  group: release
-  cancel-in-progress: false
+  # Pull requests use their own group, so they cannot replace a waiting release.
+  group: release-${{ github.event_name == 'pull_request' && github.ref || 'publish' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -81,7 +82,6 @@ jobs:
         with:
           name: site
           path: _release/site/
-          include-hidden-files: true
           retention-days: 7
       - uses: actions/upload-artifact@v7
         with:

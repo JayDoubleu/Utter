@@ -36,7 +36,7 @@ key_id() {
 }
 
 # Sets GNUPGHOME to a keyring with the private signing key. The key comes from
-# GPG_PRIVATE_KEY (CI secret), GPG_PRIVATE_KEY_FILE, or an existing GNUPGHOME.
+# GPG_PRIVATE_KEY (CI secret), GPG_PRIVATE_KEY_FILE, GNUPGHOME or ~/.gnupg.
 import_signing_key() {
     local id
     id="$(key_id)"
@@ -52,6 +52,8 @@ import_signing_key() {
     fi
     gpg --list-secret-keys "$id" > /dev/null 2>&1 \
         || die "no private key for $id. Set GPG_PRIVATE_KEY, GPG_PRIVATE_KEY_FILE or GNUPGHOME."
+    GNUPGHOME="${GNUPGHOME:-$HOME/.gnupg}"
+    export GNUPGHOME
     GPG_ARGS=(--gpg-sign="$id" --gpg-homedir="$GNUPGHOME")
 }
 

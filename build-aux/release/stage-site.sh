@@ -21,8 +21,6 @@ mkdir -p "$SITE"
 cp -a "$REPO" "$SITE/repo"
 cp "$PUBLIC_KEY" "$SITE/signing-key.asc"
 cp "$SOURCE_DIR/data/icons/hicolor/scalable/apps/$APP_ID.svg" "$SITE/icon.svg"
-# Jekyll leaves out some paths, and the repository must be served as it is.
-touch "$SITE/.nojekyll"
 
 GPG_KEY="$(key_base64)"
 cat > "$SITE/$APP_ID.flatpakref" <<EOF
