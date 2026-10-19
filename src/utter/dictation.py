@@ -254,7 +254,7 @@ class Dictation(GObject.Object):
                     text,
                     base_url=self.settings.get_string("enhance-base-url"),
                     model=model,
-                    api_key=load_api_key(spec.id),
+                    api_key=load_api_key(spec.id) if spec.needs_key else "",
                     prompt=self.settings.get_string("enhance-prompt"),
                     timeout=self.settings.get_int("enhance-timeout"),
                     api=spec.api,

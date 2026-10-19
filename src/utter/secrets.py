@@ -87,5 +87,17 @@ def store_api_key(provider_id: str, value: str) -> None:
 
 
 def load_api_key(provider_id: str) -> str:
-    """Return the key of the cleanup provider. Older versions kept one key for all providers."""
-    return load_secret(_api_key_purpose(provider_id)) or load_secret("enhance-api-key")
+    return load_secret(_api_key_purpose(provider_id))
+
+
+def migrate_api_key(provider_id: str) -> None:
+    """Give the shared key of older versions to the selected provider, then remove it.
+
+    The key of one provider must not go to the host of a different provider.
+    """
+    legacy = load_secret("enhance-api-key")
+    if not legacy:
+        return
+    if not load_api_key(provider_id):
+        store_api_key(provider_id, legacy)
+    store_secret("enhance-api-key", "")

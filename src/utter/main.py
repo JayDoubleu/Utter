@@ -17,6 +17,7 @@ from .overlay import OverlayFeed
 from .portal import RESPONSE_OK, Portal, export_window_handle
 from .preferences import PreferencesDialog
 from .recognizer import Recognizer
+from .secrets import migrate_api_key
 from .settings import get_settings
 from .shortcuts import GlobalShortcuts
 from .sounds import Sounds
@@ -95,6 +96,7 @@ class UtterApplication(Adw.Application):
         )
 
         self.settings = get_settings()
+        migrate_api_key(self.settings.get_string("enhance-provider"))
         data_dir = Path(GLib.get_user_data_dir()) / "utter"
         self.portal = Portal()
         self.shortcuts = GlobalShortcuts(self.portal)

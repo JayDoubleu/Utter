@@ -414,7 +414,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
                     sample,
                     base_url=settings.get_string("enhance-base-url"),
                     model=model,
-                    api_key=load_api_key(spec.id),
+                    api_key=load_api_key(spec.id) if spec.needs_key else "",
                     prompt=settings.get_string("enhance-prompt"),
                     timeout=settings.get_int("enhance-timeout"),
                     api=spec.api,
