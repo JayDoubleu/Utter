@@ -11,12 +11,13 @@
   <description>
     <p>
       Utter turns speech into text and types it into the focused application.
-      Recognition runs on your device with NVIDIA Parakeet or OpenAI Whisper models.
+      Recognition runs on your device with NVIDIA Parakeet, NVIDIA Nemotron or OpenAI Whisper models.
       No audio leaves your computer.
     </p>
     <ul>
       <li>Global shortcut with toggle or push-to-talk activation</li>
       <li>Types the text into any app, or pastes it</li>
+      <li>Live text while you speak with a streaming model</li>
       <li>Spoken punctuation and a personal dictionary</li>
       <li>Optional cleanup with a local or cloud language model</li>
       <li>Dictation history</li>

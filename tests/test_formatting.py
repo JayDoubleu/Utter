@@ -3,6 +3,7 @@ from utter.formatting import (
     apply_spoken_punctuation,
     describe_trigger,
     format_transcript,
+    tail_preview,
     tidy,
 )
 
@@ -69,3 +70,19 @@ def test_describe_trigger_plain_label_unchanged():
 
 def test_describe_trigger_empty():
     assert describe_trigger("") == ""
+
+
+def test_tail_preview_keeps_short_text():
+    assert tail_preview("hello  world\nagain") == "hello world again"
+
+
+def test_tail_preview_cuts_at_a_word():
+    text = " ".join(f"word{i}" for i in range(100))
+    preview = tail_preview(text, limit=30)
+    assert preview.startswith("…word")
+    assert preview.endswith("word99")
+    assert len(preview) <= 31
+
+
+def test_tail_preview_without_spaces():
+    assert tail_preview("x" * 50, limit=10) == "…" + "x" * 10

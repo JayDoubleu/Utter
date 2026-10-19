@@ -13,6 +13,7 @@ from .enhance import EnhanceError, enhance
 from .formatting import format_transcript
 from .history import History
 from .injector import TextInjector
+from .live import LiveDecode
 from .mainthread import run_on_main
 from .models import DEFAULT_MODEL_ID, ModelSpec, find_spec
 from .modelstore import ModelStore
@@ -36,6 +37,7 @@ class Dictation(GObject.Object):
     __gsignals__ = {
         "state-changed": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "level": (GObject.SignalFlags.RUN_FIRST, None, (float,)),
+        "partial": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "transcribed": (GObject.SignalFlags.RUN_FIRST, None, (object,)),
         "error": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
         "notice": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
@@ -62,6 +64,7 @@ class Dictation(GObject.Object):
         self._state = "idle"
         self._cancel_pending_start = False
         self._loading = False
+        self._live: LiveDecode | None = None
         self.audio.connect("level", lambda _audio, level: self.emit("level", level))
         self.audio.connect("error", self._on_audio_error)
         for key in ("model-id", "language", "num-threads"):
@@ -161,12 +164,23 @@ class Dictation(GObject.Object):
         self._load_async(spec, language, threads, after_load)
 
     def _begin_listening(self) -> None:
+        live = None
         try:
+            if self.recognizer.is_streaming:
+                live = LiveDecode(
+                    self.recognizer.start_stream(),
+                    self.audio.read_new,
+                    on_partial=lambda text: run_on_main(self._on_live_partial, live, text),
+                    on_error=lambda message: run_on_main(self._on_live_error, message),
+                )
             self.audio.start(self.settings.get_string("audio-device"))
-        except AudioError as error:
+        except (AudioError, RecognizerError) as error:
             self.emit("error", str(error))
             self._set_state("idle")
             return
+        self._live = live
+        if live is not None:
+            live.start()
         self._set_state("listening")
         if self.settings.get_boolean("play-sounds"):
             self.sounds.start()
@@ -178,19 +192,28 @@ class Dictation(GObject.Object):
         if self._state != "listening":
             return
         samples = self.audio.stop()
+        live, self._live = self._live, None
         duration = samples.size / SAMPLE_RATE
         if self.settings.get_boolean("play-sounds"):
             self.sounds.stop()
         if duration < MIN_DURATION:
+            if live is not None:
+                live.cancel()
             self._set_state("idle")
             return
         self._set_state("transcribing")
+        if live is not None:
+            # The live decode has the text already. It decodes only the last samples.
+            started = time.monotonic()
+            live.finish(samples, lambda raw: self._postprocess(raw, duration, started))
+            return
         threading.Thread(
             target=self._process, args=(samples, duration), daemon=True, name="transcribe"
         ).start()
 
     def cancel(self) -> None:
         if self._state == "listening":
+            self._drop_live()
             self.audio.stop()
             self._set_state("idle")
         elif self._state == "loading":
@@ -205,12 +228,19 @@ class Dictation(GObject.Object):
         except RecognizerError as error:
             run_on_main(self._fail, str(error))
             return
-        text = format_transcript(
+        self._postprocess(raw, duration, started)
+
+    def _format(self, raw: str) -> str:
+        return format_transcript(
             raw,
             spoken_punctuation=self.settings.get_boolean("spoken-punctuation"),
             auto_capitalise=self.settings.get_boolean("auto-capitalise"),
             dictionary=self.settings.get_strv("dictionary"),
         )
+
+    def _postprocess(self, raw: str, duration: float, started: float) -> None:
+        """Format, enhance and deliver. Runs on a worker thread."""
+        text = self._format(raw)
         if not text:
             run_on_main(self._fail, "No speech was recognised.")
             return
@@ -255,5 +285,26 @@ class Dictation(GObject.Object):
 
     def _on_audio_error(self, _audio: AudioCapture, message: str) -> None:
         if self._state == "listening":
+            self._drop_live()
             self.audio.stop()
             self._fail(f"Microphone error: {message}")
+
+    # ---- live decode ---------------------------------------------------------------------
+
+    def _drop_live(self) -> None:
+        live, self._live = self._live, None
+        if live is not None:
+            live.cancel()
+
+    def _on_live_partial(self, live: LiveDecode, raw: str) -> None:
+        if self._live is live and self._state == "listening":
+            self.emit("partial", self._format(raw))
+
+    def _on_live_error(self, message: str) -> None:
+        # A cancelled live decode reports nothing, so the error belongs to this dictation.
+        if self._state == "listening":
+            self._live = None
+            self.audio.stop()
+        elif self._state != "transcribing":
+            return
+        self._fail(message)

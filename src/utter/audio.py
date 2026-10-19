@@ -56,6 +56,7 @@ class AudioCapture(GObject.Object):
         self._pipeline: Gst.Pipeline | None = None
         self._bus: Gst.Bus | None = None
         self._chunks: list[np.ndarray] = []
+        self._read_index = 0
         self._lock = threading.Lock()
 
     @property
@@ -75,6 +76,7 @@ class AudioCapture(GObject.Object):
         bus.connect("message::error", self._on_bus_error)
         with self._lock:
             self._chunks = []
+            self._read_index = 0
         if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
             bus.remove_signal_watch()
             pipeline.set_state(Gst.State.NULL)
@@ -92,6 +94,16 @@ class AudioCapture(GObject.Object):
             bus.remove_signal_watch()
         with self._lock:
             chunks, self._chunks = self._chunks, []
+            self._read_index = 0
+        if not chunks:
+            return np.zeros(0, dtype=np.float32)
+        return np.concatenate(chunks)
+
+    def read_new(self) -> np.ndarray:
+        """Return the samples recorded since the last read_new call. Capture continues."""
+        with self._lock:
+            chunks = self._chunks[self._read_index :]
+            self._read_index = len(self._chunks)
         if not chunks:
             return np.zeros(0, dtype=np.float32)
         return np.concatenate(chunks)

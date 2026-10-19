@@ -7,6 +7,7 @@ from datetime import datetime
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
 from .dictation import STATE_LABELS, Dictation
+from .formatting import tail_preview
 from .history import Entry, History
 from .modelstore import ModelStore
 from .waveform import Waveform
@@ -78,6 +79,9 @@ class UtterWindow(Adw.ApplicationWindow):
         self.status_label.add_css_class("title-3")
         hero.append(self.status_label)
 
+        self.preview_label = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER, visible=False)
+        hero.append(self.preview_label)
+
         self.hint_label = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER)
         self.hint_label.add_css_class("dim-label")
         self.hint_label.add_css_class("caption")
@@ -112,6 +116,7 @@ class UtterWindow(Adw.ApplicationWindow):
 
         self.dictation.connect("state-changed", self._on_state_changed)
         self.dictation.connect("level", lambda _d, level: self.waveform.push(level))
+        self.dictation.connect("partial", self._on_partial)
         self.dictation.connect("transcribed", lambda _d, entry: self._add_entry(entry))
         self.dictation.connect("error", lambda _d, message: self.toast(message))
         self.dictation.connect("notice", lambda _d, message: self.toast(message))
@@ -181,6 +186,9 @@ class UtterWindow(Adw.ApplicationWindow):
         listening = state == "listening"
         self.waveform.set_active(listening)
         self.record_button.set_sensitive(state in ("idle", "listening"))
+        if state not in ("listening", "transcribing", "enhancing"):
+            self.preview_label.set_visible(False)
+            self.preview_label.set_label("")
         if listening:
             self.record_button.set_icon_name("media-playback-stop-symbolic")
             self.record_button.remove_css_class("suggested-action")
@@ -189,6 +197,10 @@ class UtterWindow(Adw.ApplicationWindow):
             self.record_button.set_icon_name("audio-input-microphone-symbolic")
             self.record_button.remove_css_class("destructive-action")
             self.record_button.add_css_class("suggested-action")
+
+    def _on_partial(self, _dictation, text: str) -> None:
+        self.preview_label.set_label(tail_preview(text))
+        self.preview_label.set_visible(bool(text))
 
     # ---- history rows --------------------------------------------------------------------
 

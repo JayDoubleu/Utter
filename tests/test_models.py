@@ -17,10 +17,11 @@ def test_catalogue_is_consistent():
     assert len(ids) == len(set(ids))
     assert find_spec(DEFAULT_MODEL_ID) is CATALOGUE[0]
     for spec in CATALOGUE:
-        assert spec.kind in ("transducer", "whisper")
+        assert spec.kind in ("transducer", "whisper", "streaming")
         needed = {"encoder", "decoder", "tokens"} | (
-            {"joiner"} if spec.kind == "transducer" else set()
+            set() if spec.kind == "whisper" else {"joiner"}
         )
+        assert spec.is_streaming == (spec.kind == "streaming")
         assert set(spec.files) == needed
         assert spec.download_url.endswith(f"{spec.dirname}.tar.bz2")
 

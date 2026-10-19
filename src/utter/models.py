@@ -12,7 +12,8 @@ from pathlib import Path
 RELEASE_BASE = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
 USER_AGENT = "Utter (https://github.com/JayDoubleu/Utter)"
 
-# Languages that Whisper multilingual models accept. Parakeet v3 detects the language itself.
+# Languages that Whisper multilingual models and Nemotron accept. Parakeet v3 detects the
+# language itself.
 LANGUAGES: tuple[tuple[str, str], ...] = (
     ("auto", "Detect automatically"),
     ("en", "English"),
@@ -50,13 +51,18 @@ class ModelSpec:
     id: str
     name: str
     summary: str
-    kind: str  # "transducer" or "whisper"
+    kind: str  # "transducer", "whisper" or "streaming"
     dirname: str
     files: dict[str, str]
     size_mb: int
     languages: str
     multilingual: bool = False
     url: str | None = field(default=None)
+
+    @property
+    def is_streaming(self) -> bool:
+        """A streaming model decodes while the microphone records."""
+        return self.kind == "streaming"
 
     @property
     def download_url(self) -> str:
@@ -94,6 +100,22 @@ CATALOGUE: tuple[ModelSpec, ...] = (
         },
         size_mb=482,
         languages="English",
+    ),
+    ModelSpec(
+        id="nemotron-3.5-streaming",
+        name="Nemotron 3.5 Streaming",
+        summary="Shows the text while you speak. Lowest delay after you stop.",
+        kind="streaming",
+        dirname="sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-320ms-int8-2026-06-11",
+        files={
+            "encoder": "encoder.int8.onnx",
+            "decoder": "decoder.int8.onnx",
+            "joiner": "joiner.int8.onnx",
+            "tokens": "tokens.txt",
+        },
+        size_mb=453,
+        languages="40 languages",
+        multilingual=True,
     ),
     ModelSpec(
         id="whisper-base.en",

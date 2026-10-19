@@ -6,7 +6,8 @@ It is a GNOME-native, Flatpak-packaged alternative to macOS dictation apps such 
 
 ## Features
 
-- On-device speech recognition with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). Models: NVIDIA Parakeet TDT 0.6B v3 (25 languages) and v2 (English), OpenAI Whisper Base, Small and Turbo.
+- On-device speech recognition with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). Models: NVIDIA Parakeet TDT 0.6B v3 (25 languages) and v2 (English), NVIDIA Nemotron 3.5 Streaming (40 languages), OpenAI Whisper Base, Small and Turbo.
+- Live dictation with the Nemotron 3.5 Streaming model. The window shows the text while you speak, and the text is ready when you stop.
 - Global shortcut through the XDG GlobalShortcuts portal. Toggle or push-to-talk.
 - Types into the focused app through the XDG RemoteDesktop portal, or pastes through the clipboard portal. Works on Wayland and X11 from inside the sandbox.
 - Spoken punctuation ("comma", "full stop", "new line"), sentence capitalisation, and a personal dictionary.
@@ -40,7 +41,7 @@ flatpak run io.github.jaydoubleu.Utter --background  # start hidden
 
 ## Development
 
-Pure Python modules (formatting, models, enhance, history, recognizer) have unit tests that run without GTK:
+Pure Python modules (formatting, models, enhance, history, live, recognizer) have unit tests that run without GTK:
 
 ```bash
 uv venv -p 3.13 .venv

@@ -159,7 +159,7 @@ class PreferencesDialog(Adw.PreferencesDialog):
         page.add(group)
         language = _combo(
             "Language",
-            "Whisper models use this. Parakeet detects the language.",
+            "Whisper and Nemotron models use this. Parakeet detects the language.",
             [name for _code, name in LANGUAGES],
         )
         self._bind_choice(language, "language", [code for code, _ in LANGUAGES])

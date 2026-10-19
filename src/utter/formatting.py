@@ -120,6 +120,16 @@ def format_transcript(
     return tidy(text, auto_capitalise=auto_capitalise)
 
 
+def tail_preview(text: str, limit: int = 140) -> str:
+    """Return the end of text for the live preview. Cuts at a word and adds an ellipsis."""
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    tail = text[-limit:]
+    _cut, space, rest = tail.partition(" ")
+    return "…" + (rest if space and rest else tail)
+
+
 # ---- global shortcut labels -------------------------------------------------------------
 
 MODIFIER_LABELS = {

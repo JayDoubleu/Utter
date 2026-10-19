@@ -4,7 +4,7 @@ GNOME voice dictation app. Python 3.13, GTK 4, libadwaita, GStreamer, sherpa-onn
 
 ## Layout
 
-- `src/utter/` application package. Pure modules with no GTK imports: `formatting.py`, `models.py`, `enhance.py`, `history.py`, `recognizer.py`. GObject modules: `audio.py`, `sounds.py`, `portal.py`, `shortcuts.py`, `injector.py`, `modelstore.py`, `dictation.py`, `window.py`, `preferences.py`, `main.py`.
+- `src/utter/` application package. Pure modules with no GTK imports: `formatting.py`, `models.py`, `enhance.py`, `history.py`, `live.py`, `recognizer.py`. GObject modules: `audio.py`, `sounds.py`, `portal.py`, `shortcuts.py`, `injector.py`, `modelstore.py`, `dictation.py`, `window.py`, `preferences.py`, `main.py`.
 - `data/` desktop file, metainfo, GSettings schema, D-Bus service, icons.
 - `build-aux/flatpak/` manifest and pinned Python wheels.
 - `tests/` pytest for the pure modules.
@@ -12,6 +12,8 @@ GNOME voice dictation app. Python 3.13, GTK 4, libadwaita, GStreamer, sherpa-onn
 ## Key design points
 
 - `dictation.py` is the state machine: idle, loading, listening, transcribing, enhancing, typing. Worker threads report back with `mainthread.run_on_main`.
+- Models have a `kind`: `transducer` and `whisper` decode after the stop with `OfflineRecognizer`. `streaming` (Nemotron 3.5, 320 ms chunks) decodes during capture with `OnlineRecognizer`. `live.py` polls `AudioCapture.read_new()` every 100 ms, feeds a `StreamingSession` and reports the text through the `partial` signal. At the stop, `LiveDecode.finish()` decodes only the samples that it did not read yet, then the usual format, enhance and deliver steps run. The window shows the partial text. The app types the text after the stop only.
+- `StreamingSession.finish()` adds 0.66 s of silence before `input_finished()`. A shorter tail loses the last word. Greedy search makes the partial text append-only. In `auto` language mode the text has a double space where sherpa-onnx removes the language tag, and `tidy()` collapses it.
 - `portal.py` wraps GDBus portal calls. `request()` subscribes to the Request Response signal before it calls the method. `subscribe()` filters session signals with `MATCH_ARG0_PATH` because the session handle is an object path, and a plain arg0 match never fires.
 - `shortcuts.py` uses `org.freedesktop.portal.GlobalShortcuts`. Activated starts, Deactivated stops in push-to-talk mode. `ConfigureShortcuts` needs interface version 2. GNOME 50 answers version 1, so `main.py` shows a dialog and opens Settings › Apps › Utter over `org.gnome.Settings` instead (`--talk-name` in the manifest).
 - `injector.py` uses `org.freedesktop.portal.RemoteDesktop` with `persist_mode=2` and stores the restore token in GSettings. Typing sends one keysym per character. Paste mode uses the Clipboard portal and Ctrl+V. `_send_keys()` sends one key event at a time and waits for each reply. xdg-desktop-portal 1.22 handles each method call in its own thread, so events that are sent together can change places. Mutter then logs `Received multiple virtual 0x.. key releases (ignoring)`, a key or the Shift for a capital letter stays down, and only a new login clears it.
