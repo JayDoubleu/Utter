@@ -96,7 +96,9 @@ class UtterApplication(Adw.Application):
         )
 
         self.settings = get_settings()
-        migrate_api_key(self.settings.get_string("enhance-provider"))
+        if not self.settings.get_boolean("api-key-migrated"):
+            migrate_api_key(self.settings.get_string("enhance-provider"))
+            self.settings.set_boolean("api-key-migrated", True)
         data_dir = Path(GLib.get_user_data_dir()) / "utter"
         self.portal = Portal()
         self.shortcuts = GlobalShortcuts(self.portal)

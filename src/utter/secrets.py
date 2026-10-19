@@ -43,6 +43,7 @@ def _write_fallback(data: dict[str, str]) -> None:
 
 
 def store_secret(purpose: str, value: str) -> None:
+    """Store the value. An empty value removes the secret from both stores."""
     if Secret is not None:
         try:
             if value:
@@ -54,16 +55,18 @@ def store_secret(purpose: str, value: str) -> None:
                     value,
                     None,
                 )
-            else:
-                Secret.password_clear_sync(_SCHEMA, {"purpose": purpose}, None)
-            return
+                return
+            Secret.password_clear_sync(_SCHEMA, {"purpose": purpose}, None)
         except GLib.Error:
             pass
     data = _read_fallback()
     if value:
         data[purpose] = value
+    elif purpose in data:
+        # An older version can have put the secret in the file when the keyring failed.
+        del data[purpose]
     else:
-        data.pop(purpose, None)
+        return
     _write_fallback(data)
 
 
@@ -93,7 +96,8 @@ def load_api_key(provider_id: str) -> str:
 def migrate_api_key(provider_id: str) -> None:
     """Give the shared key of older versions to the selected provider, then remove it.
 
-    The key of one provider must not go to the host of a different provider.
+    The key of one provider must not go to the host of a different provider, so the
+    caller runs this one time only.
     """
     legacy = load_secret("enhance-api-key")
     if not legacy:

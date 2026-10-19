@@ -67,6 +67,10 @@
       <default>''</default>
       <summary>System prompt for cleanup. Empty means the built-in prompt.</summary>
     </key>
+    <key name="api-key-migrated" type="b">
+      <default>false</default>
+      <summary>True after the shared API key of older versions went to one provider</summary>
+    </key>
     <key name="enhance-timeout" type="i">
       <range min="5" max="300"/>
       <default>30</default>
