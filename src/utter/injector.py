@@ -202,24 +202,47 @@ class TextInjector(GObject.Object):
         self.connect_session(go)
 
     def _type(self, text: str, on_done: DoneCallback) -> None:
-        session = self.session
         keysyms = [k for k in (keysym_for(ch) for ch in text) if k is not None]
-        if not keysyms or session is None:
+        events = [(k, state) for k in keysyms for state in (1, 0)]
+        self._send_keys("NotifyKeyboardKeysym", events, on_done)
+
+    def _send_keys(self, method: str, events: list[tuple[int, int]], on_done: DoneCallback) -> None:
+        """Send (key, state) events in order. Each call waits for the reply to the last call.
+
+        xdg-desktop-portal handles each method call in its own thread, so calls that are sent
+        together can change places. A release that arrives before its press leaves the key
+        down. Mutter does not release a Shift that it pressed for a capital letter, and the
+        keyboard stays wrong until the user logs out.
+        """
+        session = self.session
+        if not events or session is None:
             on_done(True, "")
             return
-        events = [(k, state) for k in keysyms for state in (1, 0)]
-        last = len(events) - 1
-        for index, (keysym, state) in enumerate(events):
-            params = GLib.Variant("(oa{sv}iu)", (session, {}, keysym, state))
-            if index == last:
-                self.portal.call(
-                    REMOTE_DESKTOP,
-                    "NotifyKeyboardKeysym",
-                    params,
-                    lambda _v, error: on_done(error is None, error or ""),
-                )
-            else:
-                self.portal.call(REMOTE_DESKTOP, "NotifyKeyboardKeysym", params)
+        pending = iter(events)
+        down: list[int] = []
+
+        def send(key: int, state: int, on_reply=None) -> None:
+            params = GLib.Variant("(oa{sv}iu)", (session, {}, key, state))
+            self.portal.call(REMOTE_DESKTOP, method, params, on_reply)
+
+        def step(_value=None, error: str | None = None) -> None:
+            if error is not None:
+                for key in reversed(down):
+                    send(key, 0)
+                on_done(False, error)
+                return
+            event = next(pending, None)
+            if event is None:
+                on_done(True, "")
+                return
+            key, state = event
+            if state:
+                down.append(key)
+            elif key in down:
+                down.remove(key)
+            send(key, state, step)
+
+        step()
 
     def _paste(self, text: str, use_shift: bool, on_done: DoneCallback) -> None:
         self._selection = text.encode("utf-8")
@@ -244,22 +267,10 @@ class TextInjector(GObject.Object):
     def _send_paste(self, use_shift: bool, on_done: DoneCallback) -> bool:
         keys = [KEY_LEFTCTRL] + ([KEY_LEFTSHIFT] if use_shift else []) + [KEY_V]
         events = [(k, 1) for k in keys] + [(k, 0) for k in reversed(keys)]
-        session = self.session
-        if session is None:
+        if self.session is None:
             on_done(False, "Copied to the clipboard. The typing session was closed.")
             return GLib.SOURCE_REMOVE
-        last = len(events) - 1
-        for index, (keycode, state) in enumerate(events):
-            params = GLib.Variant("(oa{sv}iu)", (session, {}, keycode, state))
-            if index == last:
-                self.portal.call(
-                    REMOTE_DESKTOP,
-                    "NotifyKeyboardKeycode",
-                    params,
-                    lambda _v, error: on_done(error is None, error or ""),
-                )
-            else:
-                self.portal.call(REMOTE_DESKTOP, "NotifyKeyboardKeycode", params)
+        self._send_keys("NotifyKeyboardKeycode", events, on_done)
         return GLib.SOURCE_REMOVE
 
     def _on_selection_transfer(self, params: tuple) -> None:
