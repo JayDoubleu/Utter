@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # The container jobs use sh by default. The release scripts need bash.
+    shell: bash
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: "3.13"
+          activate-environment: true
+      - name: Install the test tools
+        run: uv pip install sherpa-onnx numpy anthropic pytest ruff
+      - run: ruff check src tests build-aux
+      - run: ruff format --check src tests build-aux
+      - run: python -m pytest
+      - name: Check the release scripts
+        run: shellcheck -x -P SCRIPTDIR build-aux/release/*.sh
+
+  flatpak:
+    name: Flatpak build
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate the desktop file, the metainfo and the schema
+        run: meson setup _build && meson test -C _build --print-errorlogs
+      - uses: actions/cache@v6
+        with:
+          path: _flatpak/state
+          key: flatpak-builder-${{ hashFiles('build-aux/flatpak/*.yaml') }}
+          restore-keys: flatpak-builder-
+      - name: Build an unsigned test repository
+        run: build-aux/release/build-repo.sh _release/repo --unsigned --no-mirror
+      - name: Make the bundle
+        run: build-aux/release/package-assets.sh _release/repo _release/assets
+      - uses: actions/upload-artifact@v7
+        with:
+          name: utter-test-bundle
+          path: _release/assets/
+          retention-days: 7

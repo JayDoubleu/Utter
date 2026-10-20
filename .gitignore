@@ -9,3 +9,5 @@ _build/
 flatpak-build/
 *.flatpak
 repo/
+_flatpak/
+_release/

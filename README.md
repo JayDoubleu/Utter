@@ -58,9 +58,37 @@ Whisper models accept dictations of up to 30 seconds.
 - Flatpak with the `org.gnome.Platform//50` runtime.
 - GNOME Shell 50 for the overlay panel. The overlay is optional.
 
-## Build and install
+## Install
 
-Utter is not on Flathub yet. Build it from source:
+Utter has its own signed Flatpak repository on GitHub Pages. This command adds the repository and installs Utter:
+
+```bash
+flatpak install --user --from https://jaydoubleu.github.io/Utter/io.github.jaydoubleu.Utter.flatpakref
+flatpak run io.github.jaydoubleu.Utter
+```
+
+The GNOME 50 runtime comes from Flathub. GNOME Software and `flatpak update` get new versions of Utter from the repository.
+
+To add the repository without an install:
+
+```bash
+flatpak remote-add --user --if-not-exists utter https://jaydoubleu.github.io/Utter/utter.flatpakrepo
+flatpak install --user utter io.github.jaydoubleu.Utter
+```
+
+Each [GitHub release](https://github.com/JayDoubleu/Utter/releases) also has a `.flatpak` bundle. An install from the bundle adds the same repository, so it also gets updates. The repository is signed with the key in [`build-aux/release/signing-key.asc`](build-aux/release/signing-key.asc) (`0AB8199B524EEF94`).
+
+If you built Utter from source before, remove that build first. It has the same app ID:
+
+```bash
+flatpak uninstall --user io.github.jaydoubleu.Utter
+```
+
+At the first start, GNOME asks you to confirm the global shortcut. At the first dictation, GNOME asks for permission to control the keyboard. GNOME remembers both permissions.
+
+GNOME shows a remote control icon in the top bar while Utter types. Utter closes the typing session 3 seconds after each dictation, and then the icon goes away.
+
+## Build from source
 
 ```bash
 git clone https://github.com/JayDoubleu/Utter.git
@@ -70,15 +98,17 @@ flatpak run org.flatpak.Builder --user --install --force-clean flatpak-build bui
 flatpak run io.github.jaydoubleu.Utter
 ```
 
-At the first start, GNOME asks you to confirm the global shortcut. At the first dictation, GNOME asks for permission to control the keyboard. GNOME remembers both permissions.
-
-GNOME shows a remote control icon in the top bar while Utter types. Utter closes the typing session 3 seconds after each dictation, and then the icon goes away.
-
 ## Overlay panel (GNOME Shell extension)
 
 GNOME does not let an app place a window or keep it above other windows. Also, a new window takes the keyboard focus from the app that gets the text. So a GNOME Shell extension draws the dictation panel. Utter sends the state, the microphone level and the live text to the extension over D-Bus (`io.github.jaydoubleu.Utter.Overlay` on `/io/github/jaydoubleu/Utter/Overlay`).
 
-To install the extension:
+To install the extension, download `utter-overlay@jaydoubleu.github.io.shell-extension.zip` from the [latest release](https://github.com/JayDoubleu/Utter/releases/latest):
+
+```bash
+gnome-extensions install utter-overlay@jaydoubleu.github.io.shell-extension.zip
+```
+
+Or copy it from a clone of this repository:
 
 ```bash
 cp -r gnome-shell-extension/utter-overlay@jaydoubleu.github.io ~/.local/share/gnome-shell/extensions/
@@ -162,6 +192,45 @@ utter
 
 `CLAUDE.md` has notes on the design and on the GNOME 50 workarounds.
 
+## Releases
+
+A tag `vX.Y.Z` starts the release workflow. The workflow builds a signed Flatpak repository, deploys it to GitHub Pages, makes the GitHub release, and installs Utter from the live repository to test it.
+
+1. Set the version and the release notes. The notes go into the metainfo file, so GNOME Software shows them:
+
+   ```bash
+   python3 build-aux/release/release.py bump 0.2.0 --note "Cerebras and Gemini cleanup." --note "A signed Flatpak repository."
+   ```
+
+2. Commit the change and merge it to `main`.
+3. Tag the commit and push the tag:
+
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+The workflow fails if the tag does not match the version in `src/utter/config.py`.
+
+Each release continues the live repository. The new commit has the previous release as its parent, so `flatpak update` downloads a static delta. The repository keeps the last 3 commits.
+
+To test the release process on your computer, run the scripts in the CI image with podman. Use a separate Flatpak user folder for the test install:
+
+```bash
+export PAGES_URL=http://127.0.0.1:8765 GPG_PRIVATE_KEY_FILE=~/.local/share/utter-release/private.asc
+build-aux/release/in-container.sh build-aux/release/build-repo.sh _release/repo --no-mirror
+build-aux/release/in-container.sh build-aux/release/stage-site.sh _release/repo _release/site
+python3 -m http.server 8765 --bind 127.0.0.1 --directory _release/site &
+CONTAINER_ARGS="--network=host --env FLATPAK_USER_DIR=$PWD/_release/flatpak-user" \
+    build-aux/release/in-container.sh build-aux/release/verify-install.sh 0.1.0
+```
+
+Without the private key, use `--unsigned`. The CI workflow builds an unsigned bundle for each pull request.
+
+### Signing key
+
+The workflow reads the private key from the `GPG_PRIVATE_KEY` Actions secret. The public key is `build-aux/release/signing-key.asc`. Keep an offline copy of the private key. If you lose it, you must make a new key. Then each user must import the new key with `flatpak remote-modify --user --gpg-import=signing-key.asc utter`.
+
 ## Acknowledgements
 
 - [FluidVoice](https://github.com/altic-dev/FluidVoice) by altic-dev (GPL-3.0). Utter uses its default dictation prompt, the timings of its live re-decode, and the design and waveform animation of its overlay panel.
@@ -169,6 +238,7 @@ utter
 - [NVIDIA Parakeet TDT](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) and NVIDIA Nemotron speech models. See each model card for its licence.
 - [OpenAI Whisper](https://github.com/openai/whisper) (MIT).
 - The [Anthropic Python SDK](https://github.com/anthropics/anthropic-sdk-python) (MIT).
+- [github-pages-flatpak-repo](https://github.com/sirredbeard/github-pages-flatpak-repo) by sirredbeard (MIT). The release scripts follow its layout and its signing order.
 - GTK, libadwaita and GNOME Shell.
 
 ## Licence
