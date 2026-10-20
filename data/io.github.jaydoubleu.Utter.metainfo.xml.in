@@ -60,6 +60,14 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="0.2.0" date="2026-10-20">
+      <description>
+        <ul>
+          <li>Cerebras, Gemini and fast Groq defaults for the text cleanup, with one API key for each provider.</li>
+          <li>Install and update Utter from the signed Flatpak repository on GitHub Pages.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-09-16">
       <description>
         <p>First release.</p>
