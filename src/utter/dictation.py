@@ -158,6 +158,7 @@ class Dictation(GObject.Object):
 
     def _begin_listening(self) -> None:
         live = None
+        generation = self._generation
         try:
             session = self.recognizer.start_live()
             if session is not None:
@@ -165,7 +166,10 @@ class Dictation(GObject.Object):
                     session,
                     self.audio.read_new,
                     on_partial=lambda text: run_on_main(self._on_live_partial, live, text),
-                    on_error=lambda message: run_on_main(self._on_live_error, message),
+                    # The live thread of a cancelled dictation can still fail in finish().
+                    on_error=lambda message: run_on_main(
+                        self._if_current, generation, self._on_live_error, message
+                    ),
                 )
             self.audio.start(self.settings.get_string("audio-device"))
         except (AudioError, RecognizerError) as error:
@@ -315,7 +319,7 @@ class Dictation(GObject.Object):
             self.emit("partial", self._format(raw))
 
     def _on_live_error(self, message: str) -> None:
-        # A cancelled live decode reports nothing, so the error belongs to this dictation.
+        # _if_current drops the errors of a cancelled dictation, so this error is current.
         if self._state == "listening":
             self._live = None
             self.audio.stop()

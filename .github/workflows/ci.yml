@@ -27,8 +27,10 @@ jobs:
         with:
           python-version: "3.13"
           activate-environment: true
+      # The same versions as build-aux/flatpak/python3-deps.yaml. anthropic 2 sends the key in
+      # a different header, so the tests must use the SDK that the Flatpak ships.
       - name: Install the test tools
-        run: uv pip install sherpa-onnx numpy anthropic pytest ruff
+        run: uv pip install sherpa-onnx==1.13.8 numpy==2.5.3 anthropic==1.15.0 pytest ruff
       - run: ruff check src tests build-aux
       - run: ruff format --check src tests build-aux
       - run: python -m pytest

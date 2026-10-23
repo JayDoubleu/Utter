@@ -204,6 +204,9 @@ _ODD_SPACES = str.maketrans({"\u00a0": " ", "\u202f": " ", "\u2007": " "})
 def clean_reply(reply: str, original: str) -> str:
     """Strip reasoning and wrapping quotes. Fall back to the original when empty."""
     text = strip_thinking(reply).translate(_ODD_SPACES)
+    # The prompt asks for "" when the speaker cancels everything ("no wait cancel that").
+    if text in ('""', "''", "“”"):
+        return ""
     if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'“”":
         inner = text[1:-1].strip()
         if inner and not (original.startswith(text[0]) and original.endswith(text[-1])):
@@ -267,7 +270,7 @@ def enhance(
     content = user_message(prompt.strip() or DEFAULT_PROMPT, text)
     if api == "anthropic":
         reply = _anthropic_message(content, base_url, model, api_key, timeout)
-        return clean_reply(reply, text)
+        return clean_reply(reply, text) if reply else ""
     if not base_url.strip():
         raise EnhanceError("No base URL is set for the enhancement provider.")
     url = base_url.rstrip("/") + "/chat/completions"
@@ -280,9 +283,13 @@ def enhance(
     }
     body = _request(url, api_key, payload, timeout)
     try:
-        reply = body["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as error:
-        raise EnhanceError("The reply has no choices[0].message.content field.") from error
+        choice = body["choices"][0]
+        reply = choice["message"].get("content")
+    except (KeyError, IndexError, TypeError, AttributeError) as error:
+        raise EnhanceError("The reply has no choices[0].message field.") from error
+    if not reply and choice.get("finish_reason") == "stop":
+        # The speaker cancelled everything. Gemini then sends a message without content.
+        return ""
     if not isinstance(reply, str):
         raise EnhanceError("The reply content is not text.")
     return clean_reply(reply, text)
@@ -374,5 +381,7 @@ def _anthropic_message(content: str, base_url: str, model: str, api_key: str, ti
         raise EnhanceError("The cleaned text was too long and Anthropic cut it off.")
     reply = "".join(block.text for block in response.content if block.type == "text")
     if not reply.strip():
+        if response.stop_reason == "end_turn":
+            return ""  # The speaker cancelled everything.
         raise EnhanceError("Anthropic sent no text.")
     return reply

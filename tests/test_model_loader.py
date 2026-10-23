@@ -86,6 +86,27 @@ def test_request_after_a_load_starts_a_new_load():
     assert load.calls == [("first",), ("second",)]
 
 
+def test_a_different_model_during_a_load_loads_next():
+    load = BlockingLoad()
+    main = FakeMainLoop()
+    errors = []
+    loader = ModelLoader(load, main.post, errors.append)
+    results = []
+
+    loader.request(("old model",))  # the preload at startup
+    assert load.started.wait(timeout=5)
+    loader.request(("new model",), results.append)  # the user changed the model
+    load.release.set()
+    main.run_next()  # the old load ends, and the new load starts
+    assert results == []
+    main.run_next()
+
+    assert results == [True]
+    assert load.calls == [("old model",), ("new model",)]
+    assert errors == [None]
+    assert not loader.busy
+
+
 def test_provider_config_turns_off_the_memory_arena():
     name, _, config = PROVIDER.partition(":")
     assert name == "cpu"

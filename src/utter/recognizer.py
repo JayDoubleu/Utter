@@ -35,8 +35,9 @@ class RecognizerError(Exception):
 class ModelLoader:
     """Runs one model load at a time in a worker thread.
 
-    A request during a load does not start a second load. Its callback waits, and each waiting
-    callback gets the result of the load in progress. `post` moves the result to the main loop.
+    A request during a load does not start a second load at once. Its callback waits. If the
+    request asks for a different model, that load starts when the load in progress ends. Each
+    waiting callback gets the result of the last load. `post` moves the result to the main loop.
     """
 
     def __init__(
@@ -50,6 +51,8 @@ class ModelLoader:
         self._on_finished = on_finished
         self._waiters: list[Callable[[bool], None]] = []
         self._busy = False
+        self._current: tuple | None = None
+        self._next: tuple | None = None
 
     @property
     def busy(self) -> bool:
@@ -58,9 +61,18 @@ class ModelLoader:
     def request(self, args: tuple, on_done: Callable[[bool], None] | None = None) -> None:
         if on_done is not None:
             self._waiters.append(on_done)
-        if self._busy:
-            return
+        if not self._busy:
+            self._start(args)
+        elif args != self._current:
+            # The model, the language or the thread count changed during the load.
+            self._next = args
+        else:
+            self._next = None
+
+    def _start(self, args: tuple) -> None:
         self._busy = True
+        self._current = args
+        self._next = None
         threading.Thread(target=self._work, args=args, daemon=True, name="model-load").start()
 
     def _work(self, *args) -> None:
@@ -72,7 +84,12 @@ class ModelLoader:
         self._post(self._finish, error)
 
     def _finish(self, error: str | None) -> None:
+        if self._next is not None:
+            # The result of the old load does not matter to the waiting callbacks.
+            self._start(self._next)
+            return
         self._busy = False
+        self._current = None
         waiters, self._waiters = self._waiters, []
         if self._on_finished is not None:
             self._on_finished(error)
