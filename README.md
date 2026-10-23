@@ -12,7 +12,7 @@ Utter is a GNOME app in a Flatpak. It is an alternative to macOS dictation apps 
 
 - **On-device speech recognition** with [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx). No audio leaves your computer.
 - **Live text while you speak.** Parakeet models decode the recording again every 0.6 s. Nemotron 3.5 Streaming decodes each chunk once. At the stop, Utter decodes the full recording once more, so the final text is as accurate as an offline decode.
-- **An overlay panel** at the bottom of the screen, from the optional Utter Overlay GNOME Shell extension. It shows the live text, a waveform and the processing state. It stays above all windows and does not take the keyboard focus.
+- **An overlay panel** at the bottom of the screen, from the optional Utter Overlay GNOME Shell extension. It shows the live text, a waveform and the processing state. It stays above all windows and does not take the keyboard focus. With the extension, press Escape during a dictation to discard it. At other times, Escape goes to your app as usual.
 - **Global shortcut** through the XDG GlobalShortcuts portal, with toggle or push-to-talk.
 - **Types into the focused app** through the XDG RemoteDesktop portal, or pastes through the Clipboard portal. This works on Wayland and X11 from inside the sandbox.
 - **Spoken punctuation** ("comma", "full stop", "new line"), sentence capitalisation and a personal dictionary.

@@ -9,6 +9,7 @@ import Cairo from 'cairo';
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import Meta from 'gi://Meta';
 import Pango from 'gi://Pango';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
@@ -26,6 +27,8 @@ const SHOW_DURATION = 220;
 const HIDE_DURATION = 180;
 
 const PROCESSING_STATES = new Set(['transcribing', 'enhancing', 'typing']);
+// Escape cancels the dictation in these states. Utter cannot stop the typing after it starts.
+const CANCEL_STATES = new Set(['loading', 'listening', 'transcribing', 'enhancing']);
 
 // Waveform of the medium panel.
 const BAR_COUNT = 8;
@@ -97,6 +100,14 @@ export default class UtterOverlayExtension extends Extension {
         this._waveform = new Waveform();
         this._buildPanel();
         this._subscriptions = [];
+        this._connection = null;
+        this._owner = null;
+        this._escapeAction = Meta.KeyBindingAction.NONE;
+        this._acceleratorId = global.display.connect('accelerator-activated',
+            (_display, action) => {
+                if (action === this._escapeAction)
+                    this._cancel();
+            });
         this._watchId = Gio.bus_watch_name(
             Gio.BusType.SESSION,
             BUS_NAME,
@@ -108,6 +119,8 @@ export default class UtterOverlayExtension extends Extension {
     disable() {
         Gio.bus_unwatch_name(this._watchId);
         this._unsubscribe();
+        this._releaseEscape();
+        global.display.disconnect(this._acceleratorId);
         this._timeline.stop();
         this._timeline = null;
         Main.layoutManager.removeChrome(this._panel);
@@ -315,6 +328,8 @@ export default class UtterOverlayExtension extends Extension {
 
     _onAppeared(connection, owner) {
         this._unsubscribe();
+        this._connection = connection;
+        this._owner = owner;
         const subscribe = (member, handler) => {
             const id = connection.signal_subscribe(
                 owner, INTERFACE, member, OBJECT_PATH, null, Gio.DBusSignalFlags.NONE,
@@ -347,6 +362,8 @@ export default class UtterOverlayExtension extends Extension {
 
     _onVanished() {
         this._unsubscribe();
+        this._connection = null;
+        this._owner = null;
         if (this._panel)
             this._setState('idle');
     }
@@ -357,9 +374,53 @@ export default class UtterOverlayExtension extends Extension {
         this._subscriptions = [];
     }
 
+    // ---- Escape -------------------------------------------------------------------------
+
+    // Utter cannot see the keyboard while a different app has the focus. So the shell takes
+    // Escape during a dictation only, and Escape goes to the focused app at all other times.
+    _grabEscape() {
+        if (this._escapeAction !== Meta.KeyBindingAction.NONE)
+            return;
+        const action = global.display.grab_accelerator('Escape', Meta.KeyBindingFlags.NONE);
+        if (action === Meta.KeyBindingAction.NONE)
+            return;
+        // In the overview, in a dialog and on the lock screen, Escape keeps its usual job.
+        Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.NORMAL);
+        this._escapeAction = action;
+    }
+
+    _releaseEscape() {
+        if (this._escapeAction === Meta.KeyBindingAction.NONE)
+            return;
+        const action = this._escapeAction;
+        this._escapeAction = Meta.KeyBindingAction.NONE;
+        Main.wm.allowKeybinding(Meta.external_binding_name_for_action(action), Shell.ActionMode.NONE);
+        global.display.ungrab_accelerator(action);
+    }
+
+    _cancel() {
+        if (!this._connection)
+            return;
+        this._connection.call(
+            this._owner, OBJECT_PATH, INTERFACE, 'Cancel', null, null,
+            Gio.DBusCallFlags.NONE, -1, null,
+            (conn, result) => {
+                try {
+                    conn.call_finish(result);
+                } catch (e) {
+                    // An older Utter has no Cancel method.
+                    console.warn(`Utter Overlay: cannot cancel the dictation: ${e.message}`);
+                }
+            });
+    }
+
     _setState(state) {
         const previous = this._state;
         this._state = state;
+        if (CANCEL_STATES.has(state))
+            this._grabEscape();
+        else
+            this._releaseEscape();
         this._loadingLabel.visible = state === 'loading';
         if (state === 'idle') {
             this._hide();
