@@ -150,7 +150,7 @@ The cleanup adds its time to each dictation before Utter types the text. In Octo
 
 "Correct" means that the text has no filler words, the speaker's correction replaces the earlier phrase, and spoken punctuation becomes symbols. The times include the network. They change with your connection and with the load on the provider.
 
-The built-in instructions are the default dictation prompt of FluidVoice. Utter sends the instructions and the transcript in one message, as FluidVoice does. You can change them in Preferences. Put `${transcript}` in your instructions to set the place of the transcript. Without it, the transcript goes at the end. If the model does not answer before the time-out, Utter types the raw transcript.
+The built-in instructions are the default dictation prompt of FluidVoice. Utter adds one paragraph, so that the model does not answer a dictated request, and it sends the transcript between `<transcript>` tags after the instructions. You can change them in Preferences. If your instructions contain `${transcript}`, Utter puts the transcript in its place and sends one message. If the model does not answer before the time-out, Utter types the raw transcript.
 
 ## Command line
 

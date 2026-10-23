@@ -75,14 +75,17 @@ def test_enhance_round_trip(server):
     assert out == "Cleaned text."
     assert Handler.last_request["model"] == "m"
     assert Handler.last_request["messages"] == [
-        {"role": "user", "content": DEFAULT_PROMPT + "\n\nraw text"}
+        {"role": "system", "content": DEFAULT_PROMPT},
+        {"role": "user", "content": "<transcript>\nraw text\n</transcript>"},
     ]
     assert Handler.last_request["_auth"] == "Bearer k"
 
 
 def test_custom_prompt_places_the_transcript(server):
     enhance("raw text", base_url=server, model="m", prompt="Fix this: ${transcript}. Thanks.")
-    assert Handler.last_request["messages"][0]["content"] == "Fix this: raw text. Thanks."
+    assert Handler.last_request["messages"] == [
+        {"role": "user", "content": "Fix this: raw text. Thanks."}
+    ]
 
 
 def test_a_full_cancel_gives_empty_text(server):
@@ -249,10 +252,10 @@ def test_anthropic_round_trip(anthropic_server):
     assert anthropic_enhance(anthropic_server) == "Cleaned by Claude."
     request = AnthropicHandler.last_request
     assert request["model"] == "claude-haiku-5-5"
-    assert "system" not in request
+    assert request["system"] == DEFAULT_PROMPT
     assert request["output_config"] == {"effort": "low"}
     content = request["messages"][0]["content"]
-    assert content == DEFAULT_PROMPT + "\n\num so the meeting is at three"
+    assert content == "<transcript>\num so the meeting is at three\n</transcript>"
     assert AnthropicHandler.last_api_key == "sk-test"
 
 
