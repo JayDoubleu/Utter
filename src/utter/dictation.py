@@ -17,7 +17,7 @@ from .live import LiveDecode
 from .mainthread import run_on_main
 from .models import DEFAULT_MODEL_ID, ModelSpec, find_spec
 from .modelstore import ModelStore
-from .recognizer import Recognizer, RecognizerError
+from .recognizer import ModelLoader, Recognizer, RecognizerError
 from .secrets import load_api_key
 from .sounds import Sounds
 
@@ -63,7 +63,7 @@ class Dictation(GObject.Object):
         self.sounds = sounds
         self._state = "idle"
         self._cancel_pending_start = False
-        self._loading = False
+        self._loader = ModelLoader(self.recognizer.load, run_on_main, self._on_loaded)
         self._live: LiveDecode | None = None
         self.audio.connect("level", lambda _audio, level: self.emit("level", level))
         self.audio.connect("error", self._on_audio_error)
@@ -108,26 +108,12 @@ class Dictation(GObject.Object):
         self._load_async(spec, language, threads, on_done=None)
 
     def _load_async(self, spec, language, threads, on_done) -> None:
-        if self._loading:
-            return
-        self._loading = True
+        # A start during the preload waits for the preload, or the state stays "loading".
+        self._loader.request((spec, self.store.root, language, threads), on_done)
 
-        def worker() -> None:
-            try:
-                self.recognizer.load(spec, self.store.root, language, threads)
-            except RecognizerError as error:
-                run_on_main(self._on_loaded, str(error), on_done)
-                return
-            run_on_main(self._on_loaded, None, on_done)
-
-        threading.Thread(target=worker, daemon=True, name="model-load").start()
-
-    def _on_loaded(self, error: str | None, on_done) -> None:
-        self._loading = False
+    def _on_loaded(self, error: str | None) -> None:
         if error is not None:
             self.emit("error", error)
-        if on_done is not None:
-            on_done(error is None)
 
     def _on_model_setting_changed(self) -> None:
         if self._state == "idle":

@@ -27,6 +27,54 @@ class RecognizerError(Exception):
     pass
 
 
+class ModelLoader:
+    """Runs one model load at a time in a worker thread.
+
+    A request during a load does not start a second load. Its callback waits, and each waiting
+    callback gets the result of the load in progress. `post` moves the result to the main loop.
+    """
+
+    def __init__(
+        self,
+        load: Callable[..., None],
+        post: Callable[..., None],
+        on_finished: Callable[[str | None], None] | None = None,
+    ) -> None:
+        self._load = load
+        self._post = post
+        self._on_finished = on_finished
+        self._waiters: list[Callable[[bool], None]] = []
+        self._busy = False
+
+    @property
+    def busy(self) -> bool:
+        return self._busy
+
+    def request(self, args: tuple, on_done: Callable[[bool], None] | None = None) -> None:
+        if on_done is not None:
+            self._waiters.append(on_done)
+        if self._busy:
+            return
+        self._busy = True
+        threading.Thread(target=self._work, args=args, daemon=True, name="model-load").start()
+
+    def _work(self, *args) -> None:
+        error = None
+        try:
+            self._load(*args)
+        except RecognizerError as exc:
+            error = str(exc)
+        self._post(self._finish, error)
+
+    def _finish(self, error: str | None) -> None:
+        self._busy = False
+        waiters, self._waiters = self._waiters, []
+        if self._on_finished is not None:
+            self._on_finished(error)
+        for on_done in waiters:
+            on_done(error is None)
+
+
 class StreamingSession:
     """One live decode with a streaming model. Use each session from one thread only."""
 
