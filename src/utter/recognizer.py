@@ -23,6 +23,11 @@ REDECODE_INTERVAL = 0.6
 REDECODE_SEGMENT = 15.0
 
 
+# The CPU provider with the session options in onnx-cpu.cfg. The options turn off the memory
+# arena, which kept up to 2 GB after long dictations.
+PROVIDER = f"cpu:{Path(__file__).with_name('onnx-cpu.cfg')}"
+
+
 class RecognizerError(Exception):
     pass
 
@@ -225,6 +230,7 @@ class Recognizer:
                     joiner=paths["joiner"],
                     tokens=paths["tokens"],
                     num_threads=threads,
+                    provider=PROVIDER,
                     sample_rate=SAMPLE_RATE,
                     feature_dim=80,
                     decoding_method="greedy_search",
@@ -238,6 +244,7 @@ class Recognizer:
                     language=recognizer_language(spec, language),
                     task="transcribe",
                     num_threads=threads,
+                    provider=PROVIDER,
                 )
             elif spec.kind == "streaming":
                 recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
@@ -246,10 +253,10 @@ class Recognizer:
                     joiner=paths["joiner"],
                     tokens=paths["tokens"],
                     num_threads=threads,
+                    provider=PROVIDER,
                     sample_rate=SAMPLE_RATE,
                     feature_dim=80,
                     decoding_method="greedy_search",
-                    provider="cpu",
                 )
             else:
                 raise RecognizerError(f"Unknown model kind: {spec.kind}")

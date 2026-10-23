@@ -1,7 +1,8 @@
 import queue
 import threading
+from pathlib import Path
 
-from utter.recognizer import ModelLoader, RecognizerError
+from utter.recognizer import PROVIDER, ModelLoader, RecognizerError
 
 
 class FakeMainLoop:
@@ -83,3 +84,9 @@ def test_request_after_a_load_starts_a_new_load():
 
     assert results == [True, True]
     assert load.calls == [("first",), ("second",)]
+
+
+def test_provider_config_turns_off_the_memory_arena():
+    name, _, config = PROVIDER.partition(":")
+    assert name == "cpu"
+    assert "EnableCpuMemArena=0" in Path(config).read_text().splitlines()
