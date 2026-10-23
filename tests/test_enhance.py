@@ -71,8 +71,15 @@ def test_enhance_round_trip(server):
     out = enhance("raw text", base_url=server, model="m", api_key="k", prompt="")
     assert out == "Cleaned text."
     assert Handler.last_request["model"] == "m"
-    assert json.loads(Handler.last_request["messages"][1]["content"]) == {"transcript": "raw text"}
+    assert Handler.last_request["messages"] == [
+        {"role": "user", "content": DEFAULT_PROMPT + "\n\nraw text"}
+    ]
     assert Handler.last_request["_auth"] == "Bearer k"
+
+
+def test_custom_prompt_places_the_transcript(server):
+    enhance("raw text", base_url=server, model="m", prompt="Fix this: ${transcript}. Thanks.")
+    assert Handler.last_request["messages"][0]["content"] == "Fix this: raw text. Thanks."
 
 
 def test_enhance_sends_options(server):
@@ -87,8 +94,7 @@ def test_providers_keep_reasoning_short():
         assert spec.request_options("qwen-3.8-27b") == {"reasoning_effort": "none"}
         assert spec.request_options("llama-3.3-70b") == {}
     gemini = find_provider("gemini")
-    assert gemini.request_options(gemini.default_model) == {"reasoning_effort": "low"}
-    assert gemini.request_options("gemma-4-31b-it") == {}
+    assert gemini.request_options(gemini.default_model) == {}
     assert find_provider("ollama").request_options("gpt-oss:20b") == {}
 
 
@@ -225,10 +231,10 @@ def test_anthropic_round_trip(anthropic_server):
     assert anthropic_enhance(anthropic_server) == "Cleaned by Claude."
     request = AnthropicHandler.last_request
     assert request["model"] == "claude-haiku-5-5"
-    assert request["system"] == DEFAULT_PROMPT
+    assert "system" not in request
     assert request["output_config"] == {"effort": "low"}
-    content = json.loads(request["messages"][0]["content"])
-    assert content == {"transcript": "um so the meeting is at three"}
+    content = request["messages"][0]["content"]
+    assert content == DEFAULT_PROMPT + "\n\num so the meeting is at three"
     assert AnthropicHandler.last_api_key == "sk-test"
 
 

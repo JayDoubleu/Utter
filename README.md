@@ -128,14 +128,14 @@ Utter can send each transcript to a chat model before it types the text. Turn th
 
 - **Anthropic** uses the official `anthropic` Python SDK. The default model is `claude-haiku-5-5` with low effort. Get an API key in the [Claude Console](https://console.anthropic.com/).
 - **Cerebras and Groq** run models on fast inference hardware. The default model is `gpt-oss-120b` with low reasoning effort. Get an API key from [Cerebras](https://cloud.cerebras.ai/) or [Groq](https://console.groq.com/keys).
-- **Google Gemini** uses its OpenAI-compatible endpoint. The default model is `gemini-3.5-flash-lite` with low reasoning effort. Get an API key in [Google AI Studio](https://aistudio.google.com/apikey).
+- **Google Gemini** uses its OpenAI-compatible endpoint. The default model is `gemini-3.5-flash-lite`. Utter sends no reasoning effort to Gemini, so the model selects its own thinking. Get an API key in [Google AI Studio](https://aistudio.google.com/apikey).
 - **OpenAI-compatible providers** use the `/chat/completions` endpoint. Ollama and LM Studio run on your computer, so the text stays on your computer.
 
 Each provider keeps its own API key. If you paste a key from a different provider, Preferences tells you.
 
 ### Speed of the cloud providers
 
-The cleanup adds its time to each dictation before Utter types the text. In October 2026, each setup cleaned three sample dictations 30 times in total, with the built-in instructions:
+The cleanup adds its time to each dictation before Utter types the text. In October 2026, each setup cleaned three sample dictations 30 times in total, with the built-in instructions of Utter 0.2.0:
 
 | Provider and model | Median time | Slowest 10 % | Correct | Notes |
 |---|---|---|---|---|
@@ -150,7 +150,7 @@ The cleanup adds its time to each dictation before Utter types the text. In Octo
 
 "Correct" means that the text has no filler words, the speaker's correction replaces the earlier phrase, and spoken punctuation becomes symbols. The times include the network. They change with your connection and with the load on the provider.
 
-The built-in instructions are the default dictation prompt of FluidVoice. You can change them in Preferences. If the model does not answer before the time-out, Utter types the raw transcript.
+The built-in instructions are the default dictation prompt of FluidVoice. Utter sends the instructions and the transcript in one message, as FluidVoice does. You can change them in Preferences. Put `${transcript}` in your instructions to set the place of the transcript. Without it, the transcript goes at the end. If the model does not answer before the time-out, Utter types the raw transcript.
 
 ## Command line
 
