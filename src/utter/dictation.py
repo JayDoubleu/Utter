@@ -275,8 +275,16 @@ class Dictation(GObject.Object):
                 log.warning("Enhancement with %s (%s) failed: %s", spec.id, model, error)
                 notice = f"Enhancement skipped: {error}"
                 run_on_main(self._if_current, generation, self.emit, "notice", notice)
+        if not text.strip():
+            # The speaker cancelled everything ("no wait cancel that"). Nothing to type or keep.
+            run_on_main(self._if_current, generation, self._discard_empty)
+            return
         elapsed = time.monotonic() - started
         run_on_main(self._if_current, generation, self._deliver, raw, text, duration, elapsed)
+
+    def _discard_empty(self) -> None:
+        self.emit("notice", "The cleanup removed all of the text.")
+        self._set_state("idle")
 
     def _fail(self, message: str) -> None:
         self.emit("error", message)
