@@ -16,10 +16,13 @@ from utter.enhance import (
     strip_thinking,
 )
 
+REPLY = {"choices": [{"message": {"content": '<think>hmm</think>"Cleaned text."'}}]}
+
 
 class Handler(BaseHTTPRequestHandler):
     last_request: dict = {}
     status = 200
+    reply: dict = REPLY
 
     def log_message(self, *_args):
         pass
@@ -31,8 +34,7 @@ class Handler(BaseHTTPRequestHandler):
         if Handler.status != 200:
             self.send_error(Handler.status)
             return
-        reply = {"choices": [{"message": {"content": '<think>hmm</think>"Cleaned text."'}}]}
-        body = json.dumps(reply).encode()
+        body = json.dumps(Handler.reply).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -60,6 +62,7 @@ class Handler(BaseHTTPRequestHandler):
 @pytest.fixture
 def server():
     Handler.status = 200
+    Handler.reply = REPLY
     httpd = HTTPServer(("127.0.0.1", 0), Handler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -71,8 +74,27 @@ def test_enhance_round_trip(server):
     out = enhance("raw text", base_url=server, model="m", api_key="k", prompt="")
     assert out == "Cleaned text."
     assert Handler.last_request["model"] == "m"
-    assert json.loads(Handler.last_request["messages"][1]["content"]) == {"transcript": "raw text"}
+    assert Handler.last_request["messages"] == [
+        {"role": "user", "content": DEFAULT_PROMPT + "\n\nraw text"}
+    ]
     assert Handler.last_request["_auth"] == "Bearer k"
+
+
+def test_custom_prompt_places_the_transcript(server):
+    enhance("raw text", base_url=server, model="m", prompt="Fix this: ${transcript}. Thanks.")
+    assert Handler.last_request["messages"][0]["content"] == "Fix this: raw text. Thanks."
+
+
+def test_a_full_cancel_gives_empty_text(server):
+    # Gemini sends a message without content when the speaker cancels everything.
+    Handler.reply = {"choices": [{"message": {"role": "assistant"}, "finish_reason": "stop"}]}
+    assert enhance("send email no wait cancel that", base_url=server, model="m") == ""
+
+
+def test_a_cut_off_reply_without_content_is_an_error(server):
+    Handler.reply = {"choices": [{"message": {"role": "assistant"}, "finish_reason": "length"}]}
+    with pytest.raises(EnhanceError):
+        enhance("raw text", base_url=server, model="m")
 
 
 def test_enhance_sends_options(server):
@@ -87,8 +109,7 @@ def test_providers_keep_reasoning_short():
         assert spec.request_options("qwen-3.8-27b") == {"reasoning_effort": "none"}
         assert spec.request_options("llama-3.3-70b") == {}
     gemini = find_provider("gemini")
-    assert gemini.request_options(gemini.default_model) == {"reasoning_effort": "low"}
-    assert gemini.request_options("gemma-4-31b-it") == {}
+    assert gemini.request_options(gemini.default_model) == {}
     assert find_provider("ollama").request_options("gpt-oss:20b") == {}
 
 
@@ -142,6 +163,7 @@ def test_strip_thinking_and_clean_reply():
     assert strip_thinking("<think>a\nb</think>  Hi") == "Hi"
     assert strip_thinking("<think>unterminated") == ""
     assert clean_reply("", "orig") == "orig"
+    assert clean_reply('""', "send email no wait cancel that") == ""
     assert clean_reply("```\ncode\n```", "orig") == "code"
     assert clean_reply('"quoted"', '"quoted"') == '"quoted"'
     assert clean_reply("At 3\u202fpm", "orig") == "At 3 pm"
@@ -154,6 +176,7 @@ class AnthropicHandler(BaseHTTPRequestHandler):
     last_api_key: str | None = None
     reply_status = 200
     stop_reason = "end_turn"
+    text = "Cleaned by Claude."
 
     def log_message(self, *_args):
         pass
@@ -181,7 +204,7 @@ class AnthropicHandler(BaseHTTPRequestHandler):
                 "type": "message",
                 "role": "assistant",
                 "model": AnthropicHandler.last_request["model"],
-                "content": [{"type": "text", "text": "Cleaned by Claude."}],
+                "content": [{"type": "text", "text": self.text}] if self.text else [],
                 "stop_reason": self.stop_reason,
                 "stop_sequence": None,
                 "usage": {"input_tokens": 10, "output_tokens": 5},
@@ -203,6 +226,7 @@ class AnthropicHandler(BaseHTTPRequestHandler):
 def anthropic_server():
     AnthropicHandler.reply_status = 200
     AnthropicHandler.stop_reason = "end_turn"
+    AnthropicHandler.text = "Cleaned by Claude."
     httpd = HTTPServer(("127.0.0.1", 0), AnthropicHandler)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
@@ -225,11 +249,16 @@ def test_anthropic_round_trip(anthropic_server):
     assert anthropic_enhance(anthropic_server) == "Cleaned by Claude."
     request = AnthropicHandler.last_request
     assert request["model"] == "claude-haiku-5-5"
-    assert request["system"] == DEFAULT_PROMPT
+    assert "system" not in request
     assert request["output_config"] == {"effort": "low"}
-    content = json.loads(request["messages"][0]["content"])
-    assert content == {"transcript": "um so the meeting is at three"}
+    content = request["messages"][0]["content"]
+    assert content == DEFAULT_PROMPT + "\n\num so the meeting is at three"
     assert AnthropicHandler.last_api_key == "sk-test"
+
+
+def test_anthropic_full_cancel_gives_empty_text(anthropic_server):
+    AnthropicHandler.text = ""
+    assert anthropic_enhance(anthropic_server) == ""
 
 
 def test_anthropic_refusal_is_an_error(anthropic_server):

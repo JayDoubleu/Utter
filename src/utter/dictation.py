@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 
@@ -17,9 +18,11 @@ from .live import LiveDecode
 from .mainthread import run_on_main
 from .models import DEFAULT_MODEL_ID, ModelSpec, find_spec
 from .modelstore import ModelStore
-from .recognizer import Recognizer, RecognizerError
+from .recognizer import ModelLoader, Recognizer, RecognizerError
 from .secrets import load_api_key
 from .sounds import Sounds
+
+log = logging.getLogger(__name__)
 
 MIN_DURATION = 0.35
 
@@ -62,8 +65,9 @@ class Dictation(GObject.Object):
         self.history = history
         self.sounds = sounds
         self._state = "idle"
-        self._cancel_pending_start = False
-        self._loading = False
+        # Each start and each cancel adds one. A callback of an older dictation does nothing.
+        self._generation = 0
+        self._loader = ModelLoader(self.recognizer.load, run_on_main, self._on_loaded)
         self._live: LiveDecode | None = None
         self.audio.connect("level", lambda _audio, level: self.emit("level", level))
         self.audio.connect("error", self._on_audio_error)
@@ -108,26 +112,12 @@ class Dictation(GObject.Object):
         self._load_async(spec, language, threads, on_done=None)
 
     def _load_async(self, spec, language, threads, on_done) -> None:
-        if self._loading:
-            return
-        self._loading = True
+        # A start during the preload waits for the preload, or the state stays "loading".
+        self._loader.request((spec, self.store.root, language, threads), on_done)
 
-        def worker() -> None:
-            try:
-                self.recognizer.load(spec, self.store.root, language, threads)
-            except RecognizerError as error:
-                run_on_main(self._on_loaded, str(error), on_done)
-                return
-            run_on_main(self._on_loaded, None, on_done)
-
-        threading.Thread(target=worker, daemon=True, name="model-load").start()
-
-    def _on_loaded(self, error: str | None, on_done) -> None:
-        self._loading = False
+    def _on_loaded(self, error: str | None) -> None:
         if error is not None:
             self.emit("error", error)
-        if on_done is not None:
-            on_done(error is None)
 
     def _on_model_setting_changed(self) -> None:
         if self._state == "idle":
@@ -149,14 +139,17 @@ class Dictation(GObject.Object):
         if not self.store.is_installed(spec):
             self.emit("error", f"Download the {spec.name} model in Preferences first.")
             return
+        self._generation += 1
         if self.recognizer.is_loaded(spec, language, threads):
             self._begin_listening()
             return
-        self._cancel_pending_start = False
         self._set_state("loading")
+        generation = self._generation
 
         def after_load(ok: bool) -> None:
-            if not ok or self._cancel_pending_start:
+            if generation != self._generation:
+                return
+            if not ok:
                 self._set_state("idle")
                 return
             self._begin_listening()
@@ -165,6 +158,7 @@ class Dictation(GObject.Object):
 
     def _begin_listening(self) -> None:
         live = None
+        generation = self._generation
         try:
             session = self.recognizer.start_live()
             if session is not None:
@@ -172,7 +166,10 @@ class Dictation(GObject.Object):
                     session,
                     self.audio.read_new,
                     on_partial=lambda text: run_on_main(self._on_live_partial, live, text),
-                    on_error=lambda message: run_on_main(self._on_live_error, message),
+                    # The live thread of a cancelled dictation can still fail in finish().
+                    on_error=lambda message: run_on_main(
+                        self._if_current, generation, self._on_live_error, message
+                    ),
                 )
             self.audio.start(self.settings.get_string("audio-device"))
         except (AudioError, RecognizerError) as error:
@@ -188,7 +185,7 @@ class Dictation(GObject.Object):
 
     def stop(self) -> None:
         if self._state == "loading":
-            self._cancel_pending_start = True
+            self.cancel()
             return
         if self._state != "listening":
             return
@@ -203,33 +200,44 @@ class Dictation(GObject.Object):
             self._set_state("idle")
             return
         self._set_state("transcribing")
+        generation = self._generation
         if live is not None:
             # The live session decodes the samples that it did not read yet, then the final text.
             started = time.monotonic()
-            live.finish(samples, lambda raw: self._postprocess(raw, duration, started))
+            live.finish(samples, lambda raw: self._postprocess(raw, duration, started, generation))
             return
         threading.Thread(
-            target=self._process, args=(samples, duration), daemon=True, name="transcribe"
+            target=self._process,
+            args=(samples, duration, generation),
+            daemon=True,
+            name="transcribe",
         ).start()
 
     def cancel(self) -> None:
+        """Discard the dictation. Utter cannot stop the typing after it starts."""
+        if self._state not in ("loading", "listening", "transcribing", "enhancing"):
+            return
         if self._state == "listening":
             self._drop_live()
             self.audio.stop()
-            self._set_state("idle")
-        elif self._state == "loading":
-            self._cancel_pending_start = True
+        self._generation += 1
+        self._set_state("idle")
+
+    def _if_current(self, generation: int, callback, *args) -> None:
+        """Run the callback on the main thread if the dictation was not cancelled."""
+        if generation == self._generation:
+            callback(*args)
 
     # ---- pipeline ------------------------------------------------------------------------
 
-    def _process(self, samples: np.ndarray, duration: float) -> None:
+    def _process(self, samples: np.ndarray, duration: float, generation: int) -> None:
         started = time.monotonic()
         try:
             raw = self.recognizer.transcribe(samples)
         except RecognizerError as error:
-            run_on_main(self._fail, str(error))
+            run_on_main(self._if_current, generation, self._fail, str(error))
             return
-        self._postprocess(raw, duration, started)
+        self._postprocess(raw, duration, started, generation)
 
     def _format(self, raw: str) -> str:
         return format_transcript(
@@ -239,14 +247,16 @@ class Dictation(GObject.Object):
             dictionary=self.settings.get_strv("dictionary"),
         )
 
-    def _postprocess(self, raw: str, duration: float, started: float) -> None:
+    def _postprocess(self, raw: str, duration: float, started: float, generation: int) -> None:
         """Format, enhance and deliver. Runs on a worker thread."""
         text = self._format(raw)
         if not text:
-            run_on_main(self._fail, "No speech was recognised.")
+            run_on_main(self._if_current, generation, self._fail, "No speech was recognised.")
             return
+        if generation != self._generation:
+            return  # Cancelled. Do not send the text to the cleanup provider.
         if self.settings.get_boolean("enhance-enabled"):
-            run_on_main(self._set_state, "enhancing")
+            run_on_main(self._if_current, generation, self._set_state, "enhancing")
             spec = find_provider(self.settings.get_string("enhance-provider"))
             model = self.settings.get_string("enhance-model")
             try:
@@ -261,9 +271,20 @@ class Dictation(GObject.Object):
                     options=spec.request_options(model),
                 )
             except EnhanceError as error:
-                run_on_main(self.emit, "notice", f"Enhancement skipped: {error}")
+                # The notice goes away after a few seconds. The journal keeps the reason.
+                log.warning("Enhancement with %s (%s) failed: %s", spec.id, model, error)
+                notice = f"Enhancement skipped: {error}"
+                run_on_main(self._if_current, generation, self.emit, "notice", notice)
+        if not text.strip():
+            # The speaker cancelled everything ("no wait cancel that"). Nothing to type or keep.
+            run_on_main(self._if_current, generation, self._discard_empty)
+            return
         elapsed = time.monotonic() - started
-        run_on_main(self._deliver, raw, text, duration, elapsed)
+        run_on_main(self._if_current, generation, self._deliver, raw, text, duration, elapsed)
+
+    def _discard_empty(self) -> None:
+        self.emit("notice", "The cleanup removed all of the text.")
+        self._set_state("idle")
 
     def _fail(self, message: str) -> None:
         self.emit("error", message)
@@ -306,7 +327,7 @@ class Dictation(GObject.Object):
             self.emit("partial", self._format(raw))
 
     def _on_live_error(self, message: str) -> None:
-        # A cancelled live decode reports nothing, so the error belongs to this dictation.
+        # _if_current drops the errors of a cancelled dictation, so this error is current.
         if self._state == "listening":
             self._live = None
             self.audio.stop()

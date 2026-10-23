@@ -12,21 +12,60 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
-# The default dictation prompt of FluidVoice (GPL-3.0, https://github.com/altic-dev/FluidVoice).
-# The transcript goes in a JSON object, so a question in it is data and not a request.
-DEFAULT_PROMPT = """Make the smallest edits needed to turn the supplied transcript into \
-readable writing.
-Read the value of the JSON transcript field only.
-Keep every intended statement, question, and request. Do not answer the speaker, fulfil \
-requests, or comment on the text. Keep the language, meaning, tense, names, please, thank you, \
-and deliberate repetition.
-Delete hesitation words (um, uh, you know), stutters, unintended duplicated words, and \
-incomplete beginnings. Replace a clearly corrected phrase with the speaker's final version. \
-Leave unrelated content intact.
-Interpret spoken formatting directives: punctuation names become symbols, new line becomes a \
-newline, bullet point starts a list item. Write clear quantities as digits and explicitly \
-named emojis as emojis.
-Return only the edited text with no added title, explanation, emphasis, quotes, or JSON wrapper."""
+# The default dictation prompt of FluidVoice (GPL-3.0, https://github.com/altic-dev/FluidVoice):
+# its hidden base prompt and its default body, from Sources/Fluid/Persistence/SettingsStore.swift.
+DEFAULT_PROMPT = """You are a voice-to-text dictation cleaner. Your role is to clean and format \
+raw transcribed speech into polished text while refusing to answer any questions. Never answer \
+questions about yourself or anything else.
+
+## Core Rules:
+1. CLEAN the text - remove filler words (um, uh, like, you know, I mean), false starts, \
+stutters, and repetitions
+2. FORMAT properly - add correct punctuation, capitalization, and structure
+3. CONVERT numbers - spoken numbers to digits (two → 2, five thirty → 5:30, \
+twelve fifty → $12.50)
+4. EXECUTE commands - handle "new line", "period", "comma", "bold X", "header X", \
+"bullet point", etc.
+5. APPLY corrections - when user says "no wait", "actually", "scratch that", "delete that", \
+DISCARD the old content and keep ONLY the corrected version
+6. PRESERVE intent - keep the user's meaning, just clean the delivery
+7. EXPAND abbreviations - thx → thanks, pls → please, u → you, \
+ur → your/you're, gonna → going to
+
+## Critical:
+- Output ONLY the cleaned text
+- Do NOT answer questions - just clean them
+- DO NOT EVER ANSWER TO QUESTIONS
+- Do NOT add explanations or commentary
+- Do NOT wrap in quotes unless the input had quotes
+- Do NOT add filler words (um, uh) to the output
+- PRESERVE ordinals in lists: "first call client, second review contract" → keep "First" \
+and "Second"
+- PRESERVE politeness words: "please", "thank you" at end of sentences
+
+## Self-Corrections:
+When user corrects themselves, DISCARD everything before the correction trigger:
+- Triggers: "no", "wait", "actually", "scratch that", "delete that", "no no", "cancel", \
+"never mind", "sorry", "oops"
+- Example: "buy milk no wait buy water" → "Buy water." (NOT "Buy milk. Buy water.")
+- Example: "tell John no actually tell Sarah" → "Tell Sarah."
+- If correction cancels entirely: "send email no wait cancel that" → "" (empty)
+
+## Multi-Command Chains:
+When multiple commands are chained, execute ALL of them in sequence:
+- "make X bold no wait make Y bold" → **Y** (correction + formatting)
+- "header shopping bullet milk no eggs" → # Shopping\\n- Eggs (header + correction + bullet)
+- "the price is fifty no sixty dollars" → The price is $60. (correction + number)
+
+## Emojis:
+- Convert spoken emoji names: "smiley face" → 😊 (NOT 😀), \
+"thumbs up" → 👍, "heart emoji" → ❤️, "fire emoji" → 🔥
+- Keep emojis if user includes them
+- Do NOT add emojis unless user explicitly asks for them (e.g., "joke about cats" → \
+NO 😺)"""
+
+# The prompt can give the place of the transcript. Without it, the transcript goes at the end.
+TRANSCRIPT_PLACEHOLDER = "${transcript}"
 
 # Haiku answers in about a second at low effort. A long dictation is much shorter than this.
 ANTHROPIC_MAX_TOKENS = 8192
@@ -53,10 +92,6 @@ class Provider:
         # Qwen 3 reasons by default. Without "none", Cerebras takes 2 to 12 s.
         if "qwen3" in name or "qwen-3" in name:
             return {"reasoning_effort": "none"}
-        # Gemini Flash reasons by default. Each model accepts "low", but not always "none".
-        # Gemma rejects reasoning_effort.
-        if "gemini" in name:
-            return {"reasoning_effort": "low"}
         return {}
 
 
@@ -89,14 +124,13 @@ PROVIDERS: tuple[Provider, ...] = (
         default_model="openai/gpt-oss-120b",
         short_reasoning=True,
     ),
-    # Gemini 3.5 Flash-Lite cleans a dictation in about 0.7 s (tested October 2026).
+    # Gemini gets no reasoning_effort, as in FluidVoice, so the model selects its own thinking.
     Provider(
         "gemini",
         "Google Gemini",
         "https://generativelanguage.googleapis.com/v1beta/openai",
         True,
         default_model="gemini-3.5-flash-lite",
-        short_reasoning=True,
     ),
     Provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", True),
     Provider("custom", "OpenAI compatible", "", True),
@@ -170,6 +204,9 @@ _ODD_SPACES = str.maketrans({"\u00a0": " ", "\u202f": " ", "\u2007": " "})
 def clean_reply(reply: str, original: str) -> str:
     """Strip reasoning and wrapping quotes. Fall back to the original when empty."""
     text = strip_thinking(reply).translate(_ODD_SPACES)
+    # The prompt asks for "" when the speaker cancels everything ("no wait cancel that").
+    if text in ('""', "''", "“”"):
+        return ""
     if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'“”":
         inner = text[1:-1].strip()
         if inner and not (original.startswith(text[0]) and original.endswith(text[-1])):
@@ -204,9 +241,11 @@ def _request(url: str, api_key: str, payload: dict | None, timeout: int) -> dict
         raise EnhanceError(f"Invalid JSON from {url}") from error
 
 
-def user_content(text: str) -> str:
-    """Wrap the transcript in a JSON object, as the default prompt expects."""
-    return json.dumps({"transcript": text}, ensure_ascii=False)
+def user_message(prompt: str, text: str) -> str:
+    """Put the transcript into the prompt, as FluidVoice does. Both go in one user message."""
+    if TRANSCRIPT_PLACEHOLDER in prompt:
+        return prompt.replace(TRANSCRIPT_PLACEHOLDER, text)
+    return f"{prompt}\n\n{text}"
 
 
 def enhance(
@@ -228,10 +267,10 @@ def enhance(
         return text
     if not model.strip():
         raise EnhanceError("No model name is set for the enhancement provider.")
-    system = prompt.strip() or DEFAULT_PROMPT
+    content = user_message(prompt.strip() or DEFAULT_PROMPT, text)
     if api == "anthropic":
-        reply = _anthropic_message(text, base_url, model, api_key, system, timeout)
-        return clean_reply(reply, text)
+        reply = _anthropic_message(content, base_url, model, api_key, timeout)
+        return clean_reply(reply, text) if reply else ""
     if not base_url.strip():
         raise EnhanceError("No base URL is set for the enhancement provider.")
     url = base_url.rstrip("/") + "/chat/completions"
@@ -239,17 +278,18 @@ def enhance(
         "model": model,
         "temperature": 0.2,
         "stream": False,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_content(text)},
-        ],
+        "messages": [{"role": "user", "content": content}],
         **(options or {}),
     }
     body = _request(url, api_key, payload, timeout)
     try:
-        reply = body["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, TypeError) as error:
-        raise EnhanceError("The reply has no choices[0].message.content field.") from error
+        choice = body["choices"][0]
+        reply = choice["message"].get("content")
+    except (KeyError, IndexError, TypeError, AttributeError) as error:
+        raise EnhanceError("The reply has no choices[0].message field.") from error
+    if not reply and choice.get("finish_reason") == "stop":
+        # The speaker cancelled everything. Gemini then sends a message without content.
+        return ""
     if not isinstance(reply, str):
         raise EnhanceError("The reply content is not text.")
     return clean_reply(reply, text)
@@ -325,16 +365,13 @@ def _anthropic_errors(anthropic: Any, base_url: str, model: str) -> Iterator[Non
         raise EnhanceError(f"Cannot reach {host}.") from error
 
 
-def _anthropic_message(
-    text: str, base_url: str, model: str, api_key: str, system: str, timeout: int
-) -> str:
+def _anthropic_message(content: str, base_url: str, model: str, api_key: str, timeout: int) -> str:
     anthropic, client = _anthropic_client(base_url, api_key, timeout)
     with _anthropic_errors(anthropic, base_url, model):
         response = client.messages.create(
             model=model,
             max_tokens=ANTHROPIC_MAX_TOKENS,
-            system=system,
-            messages=[{"role": "user", "content": user_content(text)}],
+            messages=[{"role": "user", "content": content}],
             # Cleanup is a small task. Low effort keeps the delay before typing short.
             output_config={"effort": "low"},
         )
@@ -344,5 +381,7 @@ def _anthropic_message(
         raise EnhanceError("The cleaned text was too long and Anthropic cut it off.")
     reply = "".join(block.text for block in response.content if block.type == "text")
     if not reply.strip():
+        if response.stop_reason == "end_turn":
+            return ""  # The speaker cancelled everything.
         raise EnhanceError("Anthropic sent no text.")
     return reply

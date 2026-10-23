@@ -23,8 +23,78 @@ REDECODE_INTERVAL = 0.6
 REDECODE_SEGMENT = 15.0
 
 
+# The CPU provider with the session options in onnx-cpu.cfg. The options turn off the memory
+# arena, which kept up to 2 GB after long dictations.
+PROVIDER = f"cpu:{Path(__file__).with_name('onnx-cpu.cfg')}"
+
+
 class RecognizerError(Exception):
     pass
+
+
+class ModelLoader:
+    """Runs one model load at a time in a worker thread.
+
+    A request during a load does not start a second load at once. Its callback waits. If the
+    request asks for a different model, that load starts when the load in progress ends. Each
+    waiting callback gets the result of the last load. `post` moves the result to the main loop.
+    """
+
+    def __init__(
+        self,
+        load: Callable[..., None],
+        post: Callable[..., None],
+        on_finished: Callable[[str | None], None] | None = None,
+    ) -> None:
+        self._load = load
+        self._post = post
+        self._on_finished = on_finished
+        self._waiters: list[Callable[[bool], None]] = []
+        self._busy = False
+        self._current: tuple | None = None
+        self._next: tuple | None = None
+
+    @property
+    def busy(self) -> bool:
+        return self._busy
+
+    def request(self, args: tuple, on_done: Callable[[bool], None] | None = None) -> None:
+        if on_done is not None:
+            self._waiters.append(on_done)
+        if not self._busy:
+            self._start(args)
+        elif args != self._current:
+            # The model, the language or the thread count changed during the load.
+            self._next = args
+        else:
+            self._next = None
+
+    def _start(self, args: tuple) -> None:
+        self._busy = True
+        self._current = args
+        self._next = None
+        threading.Thread(target=self._work, args=args, daemon=True, name="model-load").start()
+
+    def _work(self, *args) -> None:
+        error = None
+        try:
+            self._load(*args)
+        except RecognizerError as exc:
+            error = str(exc)
+        self._post(self._finish, error)
+
+    def _finish(self, error: str | None) -> None:
+        if self._next is not None:
+            # The result of the old load does not matter to the waiting callbacks.
+            self._start(self._next)
+            return
+        self._busy = False
+        self._current = None
+        waiters, self._waiters = self._waiters, []
+        if self._on_finished is not None:
+            self._on_finished(error)
+        for on_done in waiters:
+            on_done(error is None)
 
 
 class StreamingSession:
@@ -177,6 +247,7 @@ class Recognizer:
                     joiner=paths["joiner"],
                     tokens=paths["tokens"],
                     num_threads=threads,
+                    provider=PROVIDER,
                     sample_rate=SAMPLE_RATE,
                     feature_dim=80,
                     decoding_method="greedy_search",
@@ -190,6 +261,7 @@ class Recognizer:
                     language=recognizer_language(spec, language),
                     task="transcribe",
                     num_threads=threads,
+                    provider=PROVIDER,
                 )
             elif spec.kind == "streaming":
                 recognizer = sherpa_onnx.OnlineRecognizer.from_transducer(
@@ -198,10 +270,10 @@ class Recognizer:
                     joiner=paths["joiner"],
                     tokens=paths["tokens"],
                     num_threads=threads,
+                    provider=PROVIDER,
                     sample_rate=SAMPLE_RATE,
                     feature_dim=80,
                     decoding_method="greedy_search",
-                    provider="cpu",
                 )
             else:
                 raise RecognizerError(f"Unknown model kind: {spec.kind}")

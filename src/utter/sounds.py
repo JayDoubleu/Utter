@@ -24,14 +24,22 @@ class Sounds:
             return
         bus = pipeline.get_bus()
         bus.add_signal_watch()
+        handlers: list[int] = []
 
         def finish(*_args) -> None:
+            if not handlers:
+                return
             pipeline.set_state(Gst.State.NULL)
             bus.remove_signal_watch()
+            # The bus holds this closure and the closure holds the pipeline. Python cannot
+            # free that cycle, so each tone kept its pipeline and its file descriptors.
+            for handler in handlers:
+                bus.disconnect(handler)
+            handlers.clear()
             self._active.discard(pipeline)
 
-        bus.connect("message::eos", finish)
-        bus.connect("message::error", finish)
+        handlers.append(bus.connect("message::eos", finish))
+        handlers.append(bus.connect("message::error", finish))
         self._active.add(pipeline)
         pipeline.set_state(Gst.State.PLAYING)
 

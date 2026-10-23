@@ -26,6 +26,7 @@ INTERFACE_XML = f"""
       <arg type="s" name="state" direction="out"/>
       <arg type="s" name="text" direction="out"/>
     </method>
+    <method name="Cancel"/>
     <signal name="StateChanged">
       <arg type="s" name="state"/>
     </signal>
@@ -53,6 +54,7 @@ def level_fraction(rms: float) -> float:
 class OverlayFeed:
     def __init__(self, connection: Gio.DBusConnection, dictation: Dictation) -> None:
         self._connection = connection
+        self._dictation = dictation
         self._state = dictation.state
         self._text = ""
         self._peak = 0.0
@@ -81,6 +83,10 @@ class OverlayFeed:
     ) -> None:
         if method == "GetState":
             invocation.return_value(GLib.Variant("(ss)", (self._state, self._text)))
+        elif method == "Cancel":
+            # The extension calls this when the user presses Escape during a dictation.
+            self._dictation.cancel()
+            invocation.return_value(None)
         else:
             invocation.return_dbus_error(
                 "org.freedesktop.DBus.Error.UnknownMethod", f"No method {method}"
