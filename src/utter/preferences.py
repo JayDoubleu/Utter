@@ -72,7 +72,8 @@ class PreferencesDialog(Adw.PreferencesDialog):
         self._bind_choice(injection, "injection-mode", [m for m, _ in INJECTION_MODES])
         group.add(injection)
         shift = Adw.SwitchRow(
-            title="Paste with Ctrl+Shift+V", subtitle="Terminals use this combination"
+            title="Paste with Ctrl+Shift+V",
+            subtitle="With the Utter Overlay extension, Utter uses it in terminals",
         )
         self.settings.bind("paste-uses-shift", shift, "active", Gio.SettingsBindFlags.DEFAULT)
         group.add(shift)

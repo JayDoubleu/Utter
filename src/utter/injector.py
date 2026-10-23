@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 from gi.repository import Gdk, Gio, GLib, GObject
 
+from .keys import key_events
 from .portal import PORTAL_BUS, PORTAL_PATH, RESPONSE_OK, SESSION_IFACE, Portal
 
 REMOTE_DESKTOP = "org.freedesktop.portal.RemoteDesktop"
@@ -22,25 +23,9 @@ KEY_LEFTCTRL = 29
 KEY_LEFTSHIFT = 42
 KEY_V = 47
 
-KEYSYM_RETURN = 0xFF0D
-KEYSYM_TAB = 0xFF09
-
 TEXT_MIME_TYPES = ["text/plain;charset=utf-8", "text/plain", "UTF8_STRING", "TEXT", "STRING"]
 
 DoneCallback = Callable[[bool, str], None]
-
-
-def keysym_for(char: str) -> int | None:
-    code = ord(char)
-    if char == "\n":
-        return KEYSYM_RETURN
-    if char == "\t":
-        return KEYSYM_TAB
-    if code < 0x20 or 0x7F <= code < 0xA0:
-        return None
-    if code <= 0xFF:
-        return code
-    return 0x01000000 | code
 
 
 class TextInjector(GObject.Object):
@@ -251,9 +236,7 @@ class TextInjector(GObject.Object):
         self.connect_session(go)
 
     def _type(self, text: str, on_done: DoneCallback) -> None:
-        keysyms = [k for k in (keysym_for(ch) for ch in text) if k is not None]
-        events = [(k, state) for k in keysyms for state in (1, 0)]
-        self._send_keys("NotifyKeyboardKeysym", events, on_done)
+        self._send_keys("NotifyKeyboardKeysym", key_events(text), on_done)
 
     def _send_keys(self, method: str, events: list[tuple[int, int]], on_done: DoneCallback) -> None:
         """Send (key, state) events in order. Each call waits for the reply to the last call.

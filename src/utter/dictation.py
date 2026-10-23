@@ -14,6 +14,7 @@ from .enhance import EnhanceError, enhance, find_provider
 from .formatting import format_transcript
 from .history import History
 from .injector import TextInjector
+from .keys import delivery
 from .live import LiveDecode
 from .mainthread import run_on_main
 from .models import DEFAULT_MODEL_ID, ModelSpec, find_spec
@@ -69,6 +70,8 @@ class Dictation(GObject.Object):
         self._generation = 0
         self._loader = ModelLoader(self.recognizer.load, run_on_main, self._on_loaded)
         self._live: LiveDecode | None = None
+        # The desktop file id of the focused app. The Utter Overlay extension sets it.
+        self.target_app = ""
         self.audio.connect("level", lambda _audio, level: self.emit("level", level))
         self.audio.connect("error", self._on_audio_error)
         for key in ("model-id", "language", "num-threads"):
@@ -135,6 +138,7 @@ class Dictation(GObject.Object):
     def start(self) -> None:
         if self._state != "idle":
             return
+        self.target_app = ""  # The extension sends the focused app when the state changes.
         spec, language, threads = self._model_params()
         if not self.store.is_installed(spec):
             self.emit("error", f"Download the {spec.name} model in Preferences first.")
@@ -295,8 +299,12 @@ class Dictation(GObject.Object):
     def _deliver(self, raw: str, text: str, duration: float, elapsed: float) -> None:
         self._set_state("typing")
         spec = self.current_spec()
-        mode = self.settings.get_string("injection-mode")
-        use_shift = self.settings.get_boolean("paste-uses-shift")
+        mode, use_shift = delivery(
+            text,
+            self.settings.get_string("injection-mode"),
+            self.settings.get_boolean("paste-uses-shift"),
+            self.target_app,
+        )
 
         def done(_ok: bool, notice: str) -> None:
             entry = self.history.add(
