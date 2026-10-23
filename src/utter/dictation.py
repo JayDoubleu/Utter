@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 
@@ -20,6 +21,8 @@ from .modelstore import ModelStore
 from .recognizer import ModelLoader, Recognizer, RecognizerError
 from .secrets import load_api_key
 from .sounds import Sounds
+
+log = logging.getLogger(__name__)
 
 MIN_DURATION = 0.35
 
@@ -247,6 +250,8 @@ class Dictation(GObject.Object):
                     options=spec.request_options(model),
                 )
             except EnhanceError as error:
+                # The notice goes away after a few seconds. The journal keeps the reason.
+                log.warning("Enhancement with %s (%s) failed: %s", spec.id, model, error)
                 run_on_main(self.emit, "notice", f"Enhancement skipped: {error}")
         elapsed = time.monotonic() - started
         run_on_main(self._deliver, raw, text, duration, elapsed)

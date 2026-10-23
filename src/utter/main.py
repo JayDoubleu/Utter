@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -322,5 +323,7 @@ class UtterApplication(Adw.Application):
 
 
 def main(argv: list[str]) -> int:
+    # stderr goes to the journal when D-Bus or the desktop starts Utter.
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     app = UtterApplication()
     return app.run(argv)
