@@ -60,6 +60,16 @@
     <control>touch</control>
   </supports>
   <releases>
+    <release version="0.3.0" date="2026-10-24">
+      <description>
+        <ul>
+          <li>Cleaner text from the FluidVoice cleanup instructions. A dictated request, such as a request for a table, is cleaned and not answered.</li>
+          <li>A line break is Shift+Enter, so a chat app does not send the message at each line. With the overlay extension, Utter pastes lines into a terminal as one block.</li>
+          <li>With the overlay extension, press Escape to discard a dictation.</li>
+          <li>Fixes: Utter stopped working after about 250 dictations, and it kept up to 1.5 GB of memory after long dictations.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.2.0" date="2026-10-20">
       <description>
         <ul>
