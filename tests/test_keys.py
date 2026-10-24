@@ -30,6 +30,11 @@ def test_terminals():
     assert is_terminal("org.gnome.Ptyxis.desktop")
     assert is_terminal("org.gnome.Terminal.desktop")
     assert is_terminal("kitty")
+    assert is_terminal("org.codeberg.dnkl.foot.desktop")
+    assert is_terminal("org.gnome.Ptyxis.Devel.desktop")
+    assert is_terminal("terminator.desktop")
+    assert is_terminal("com.github.amezin.ddterm")
+    assert not is_terminal("window:12")
     assert not is_terminal("org.gnome.TextEditor.desktop")
     assert not is_terminal("")
 

@@ -170,6 +170,8 @@ def test_strip_thinking_and_clean_reply():
     assert clean_reply("```\ncode\n```", "orig") == "code"
     assert clean_reply('"quoted"', '"quoted"') == '"quoted"'
     assert clean_reply("At 3\u202fpm", "orig") == "At 3 pm"
+    assert clean_reply("<transcript>\nFriday.\n</transcript>", "orig") == "Friday."
+    assert clean_reply('<transcript>""</transcript>', "cancel that") == ""
 
 
 class AnthropicHandler(BaseHTTPRequestHandler):

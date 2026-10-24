@@ -9,27 +9,30 @@ KEYSYM_SHIFT_L = 0xFFE1
 # Return sends a message in chat apps and in Claude Code. Shift+Return makes a new line.
 LINE_BREAK = [(KEYSYM_SHIFT_L, 1), (KEYSYM_RETURN, 1), (KEYSYM_RETURN, 0), (KEYSYM_SHIFT_L, 0)]
 
-# Desktop file ids without ".desktop", in lower case. A terminal pastes with Ctrl+Shift+V.
+# The last part of a terminal's desktop file id or window class, in lower case. For example
+# "org.gnome.Ptyxis.desktop" gives "ptyxis". A terminal pastes with Ctrl+Shift+V.
 TERMINALS = frozenset(
     {
         "alacritty",
-        "app.devsuite.ptyxis",
-        "com.gexperts.tilix",
-        "com.mitchellh.ghostty",
-        "com.raggesilver.blackbox",
-        "dev.warp.warp",
+        "blackbox",
+        "console",
+        "contour",
+        "ddterm",
         "foot",
         "footclient",
-        "io.elementary.terminal",
+        "ghostty",
+        "guake",
         "kitty",
-        "org.alacritty.alacritty",
-        "org.contourterminal.contour",
-        "org.gnome.console",
-        "org.gnome.ptyxis",
-        "org.gnome.terminal",
-        "org.kde.konsole",
-        "org.wezfurlong.wezterm",
-        "org.xfce.terminal",
+        "konsole",
+        "ptyxis",
+        "rio",
+        "rxvt-unicode",
+        "terminator",
+        "tilda",
+        "tilix",
+        "urxvt",
+        "warp",
+        "wezterm",
         "xterm",
     }
 )
@@ -62,9 +65,9 @@ def key_events(text: str) -> list[tuple[int, int]]:
 
 
 def is_terminal(app_id: str) -> bool:
-    """True if the desktop file id belongs to a terminal emulator."""
-    name = app_id.lower().removesuffix(".desktop")
-    return name in TERMINALS or "terminal" in name
+    """True if the desktop file id or the window class belongs to a terminal emulator."""
+    name = app_id.lower().removesuffix(".desktop").removesuffix(".devel")
+    return name.rsplit(".", 1)[-1] in TERMINALS or "terminal" in name
 
 
 def delivery(text: str, mode: str, use_shift: bool, app_id: str) -> tuple[str, bool]:

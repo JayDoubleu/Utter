@@ -210,6 +210,9 @@ _ODD_SPACES = str.maketrans({"\u00a0": " ", "\u202f": " ", "\u2007": " "})
 def clean_reply(reply: str, original: str) -> str:
     """Strip reasoning and wrapping quotes. Fall back to the original when empty."""
     text = strip_thinking(reply).translate(_ODD_SPACES)
+    # The model can copy the tags of the user message into its reply.
+    if text.startswith("<transcript>") and text.endswith("</transcript>"):
+        text = text.removeprefix("<transcript>").removesuffix("</transcript>").strip()
     # The prompt asks for "" when the speaker cancels everything ("no wait cancel that").
     if text in ('""', "''", "“”"):
         return ""

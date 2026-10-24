@@ -65,7 +65,7 @@
     </key>
     <key name="enhance-prompt" type="s">
       <default>''</default>
-      <summary>Instructions for cleanup. The transcript goes at the end or in place of ${transcript}. Empty means the built-in instructions.</summary>
+      <summary>Instructions for cleanup. They go in the system message, and the transcript goes in the user message. With ${transcript}, the transcript goes in place of it. Empty means the built-in instructions.</summary>
     </key>
     <key name="api-key-migrated" type="b">
       <default>false</default>

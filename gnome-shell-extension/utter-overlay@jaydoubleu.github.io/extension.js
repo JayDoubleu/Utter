@@ -408,7 +408,10 @@ export default class UtterOverlayExtension extends Extension {
         if (!this._connection || this._state === 'idle')
             return;
         const app = Shell.WindowTracker.get_default().focus_app;
-        const id = app?.get_id() ?? '';
+        // A window without a desktop file gets an id such as "window:12". Its class names the app.
+        const id = app?.is_window_backed()
+            ? global.display.focus_window?.get_wm_class() ?? ''
+            : app?.get_id() ?? '';
         if (id === this._targetApp)
             return;
         this._targetApp = id;
