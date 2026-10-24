@@ -27,6 +27,9 @@ INTERFACE_XML = f"""
       <arg type="s" name="text" direction="out"/>
     </method>
     <method name="Cancel"/>
+    <method name="SetTargetApp">
+      <arg type="s" name="app_id" direction="in"/>
+    </method>
     <signal name="StateChanged">
       <arg type="s" name="state"/>
     </signal>
@@ -79,13 +82,17 @@ class OverlayFeed:
             pass  # The bus is gone during shutdown. The overlay is optional.
 
     def _on_method_call(
-        self, _connection, _sender, _path, _interface, method, _params, invocation
+        self, _connection, _sender, _path, _interface, method, params, invocation
     ) -> None:
         if method == "GetState":
             invocation.return_value(GLib.Variant("(ss)", (self._state, self._text)))
         elif method == "Cancel":
             # The extension calls this when the user presses Escape during a dictation.
             self._dictation.cancel()
+            invocation.return_value(None)
+        elif method == "SetTargetApp":
+            # The extension sends the focused app during a dictation. Terminals get a paste.
+            self._dictation.target_app = params.unpack()[0]
             invocation.return_value(None)
         else:
             invocation.return_dbus_error(

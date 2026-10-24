@@ -103,6 +103,9 @@ export default class UtterOverlayExtension extends Extension {
         this._connection = null;
         this._owner = null;
         this._escapeAction = Meta.KeyBindingAction.NONE;
+        this._targetApp = null;
+        this._focusId = Shell.WindowTracker.get_default().connect('notify::focus-app',
+            () => this._reportTarget());
         this._acceleratorId = global.display.connect('accelerator-activated',
             (_display, action) => {
                 if (action === this._escapeAction)
@@ -121,6 +124,7 @@ export default class UtterOverlayExtension extends Extension {
         this._unsubscribe();
         this._releaseEscape();
         global.display.disconnect(this._acceleratorId);
+        Shell.WindowTracker.get_default().disconnect(this._focusId);
         this._timeline.stop();
         this._timeline = null;
         Main.layoutManager.removeChrome(this._panel);
@@ -398,18 +402,38 @@ export default class UtterOverlayExtension extends Extension {
         global.display.ungrab_accelerator(action);
     }
 
+    // Utter types into the focused app. A terminal gets a paste, so a line break does not run
+    // the line. Utter cannot see the focused app on Wayland, so the shell tells it.
+    _reportTarget() {
+        if (!this._connection || this._state === 'idle')
+            return;
+        const app = Shell.WindowTracker.get_default().focus_app;
+        // A window without a desktop file gets an id such as "window:12". Its class names the app.
+        const id = app?.is_window_backed()
+            ? global.display.focus_window?.get_wm_class() ?? ''
+            : app?.get_id() ?? '';
+        if (id === this._targetApp)
+            return;
+        this._targetApp = id;
+        this._call('SetTargetApp', new GLib.Variant('(s)', [id]));
+    }
+
     _cancel() {
+        this._call('Cancel', null);
+    }
+
+    _call(method, params) {
         if (!this._connection)
             return;
         this._connection.call(
-            this._owner, OBJECT_PATH, INTERFACE, 'Cancel', null, null,
+            this._owner, OBJECT_PATH, INTERFACE, method, params, null,
             Gio.DBusCallFlags.NONE, -1, null,
             (conn, result) => {
                 try {
                     conn.call_finish(result);
                 } catch (e) {
-                    // An older Utter has no Cancel method.
-                    console.warn(`Utter Overlay: cannot cancel the dictation: ${e.message}`);
+                    // An older Utter does not have this method.
+                    console.warn(`Utter Overlay: ${method} failed: ${e.message}`);
                 }
             });
     }
@@ -421,6 +445,10 @@ export default class UtterOverlayExtension extends Extension {
             this._grabEscape();
         else
             this._releaseEscape();
+        if (state === 'idle')
+            this._targetApp = null;
+        else if (previous === 'idle')
+            this._reportTarget();
         this._loadingLabel.visible = state === 'loading';
         if (state === 'idle') {
             this._hide();

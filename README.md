@@ -14,7 +14,7 @@ Utter is a GNOME app in a Flatpak. It is an alternative to macOS dictation apps 
 - **Live text while you speak.** Parakeet models decode the recording again every 0.6 s. Nemotron 3.5 Streaming decodes each chunk once. At the stop, Utter decodes the full recording once more, so the final text is as accurate as an offline decode.
 - **An overlay panel** at the bottom of the screen, from the optional Utter Overlay GNOME Shell extension. It shows the live text, a waveform and the processing state. It stays above all windows and does not take the keyboard focus. With the extension, press Escape during a dictation to discard it. At other times, Escape goes to your app as usual.
 - **Global shortcut** through the XDG GlobalShortcuts portal, with toggle or push-to-talk.
-- **Types into the focused app** through the XDG RemoteDesktop portal, or pastes through the Clipboard portal. This works on Wayland and X11 from inside the sandbox.
+- **Types into the focused app** through the XDG RemoteDesktop portal, or pastes through the Clipboard portal. This works on Wayland and X11 from inside the sandbox. A line break is Shift+Enter, so a chat app or Claude Code does not send the message at each line. With the Utter Overlay extension, Utter pastes text with line breaks into a terminal as one block. The paste replaces the clipboard, and the clipboard is empty a few seconds later.
 - **Spoken punctuation** ("comma", "full stop", "new line"), sentence capitalisation and a personal dictionary.
 - **Optional cleanup with a chat model.** Use Anthropic (Claude Haiku 5.5 by default) or an OpenAI-compatible provider such as Ollama, LM Studio, OpenAI, Cerebras, Groq, Google Gemini or OpenRouter. Cerebras and Groq use `gpt-oss-120b` by default and clean a dictation in about 0.3 s. Each provider keeps its own API key. The model removes filler words and corrects punctuation.
 - **Dictation history** with copy and delete.
@@ -150,7 +150,7 @@ The cleanup adds its time to each dictation before Utter types the text. In Octo
 
 "Correct" means that the text has no filler words, the speaker's correction replaces the earlier phrase, and spoken punctuation becomes symbols. The times include the network. They change with your connection and with the load on the provider.
 
-The built-in instructions are the default dictation prompt of FluidVoice. Utter sends the instructions and the transcript in one message, as FluidVoice does. You can change them in Preferences. Put `${transcript}` in your instructions to set the place of the transcript. Without it, the transcript goes at the end. If the model does not answer before the time-out, Utter types the raw transcript.
+The built-in instructions are the default dictation prompt of FluidVoice. Utter adds one paragraph, so that the model does not answer a dictated request, and it sends the transcript between `<transcript>` tags after the instructions. You can change them in Preferences. If your instructions contain `${transcript}`, Utter puts the transcript in its place and sends one message. If the model does not answer before the time-out, Utter types the raw transcript.
 
 ## Command line
 

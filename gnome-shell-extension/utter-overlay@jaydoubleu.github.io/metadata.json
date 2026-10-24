@@ -4,5 +4,5 @@
   "description": "Shows the Utter dictation panel at the bottom of the screen: the microphone level, the live text and the processing state. It needs the Utter app.",
   "shell-version": ["50"],
   "url": "https://github.com/JayDoubleu/Utter",
-  "version-name": "0.1.0"
+  "version-name": "0.3.0"
 }
